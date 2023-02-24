@@ -1,6 +1,11 @@
 # Datasets 
 data 
 
+# Results 
+*.png
+*.jpg
+*.jpeg
+
 # MacOS
 .DS_store
 
