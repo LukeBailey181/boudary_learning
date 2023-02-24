@@ -187,7 +187,9 @@ def main():
                 sample.view(64, 1, 28, 28), "./results/sample_" + str(epoch) + ".png"
             )
 
-    return train_stats, test_stats
+    torch.save(model, "./models/mnist_vae.pkl")
+        
+    print(train_stats, test_stats)
 
 
 if __name__ == "__main__":
