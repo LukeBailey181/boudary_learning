@@ -7,7 +7,8 @@ from torch import nn, optim
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 from tqdm import tqdm
-
+from data import get_mnist
+from data import load_binary_mnist
 
 import os
 import time
@@ -21,6 +22,8 @@ if torch.cuda.is_available():
 else:
     DEVICE = "cpu"
 
+TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
+TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
 
 
 class VAE(nn.Module):
@@ -80,7 +83,7 @@ def compute_elbo_dreg(x, qz_x, px_z, z):
     return (reweight * lw).sum(0).mean(0)
 
 
-def train(epoch, train_loader, log_interval, model, lr=0.001, k=100):
+def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin=False):
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.train()
@@ -88,8 +91,9 @@ def train(epoch, train_loader, log_interval, model, lr=0.001, k=100):
     for batch_idx, (data, _) in tqdm(enumerate(train_loader)):
         data = data.to(DEVICE)
         # Dynamic binarization
-        sample = torch.rand(data.size()).to(DEVICE)
-        data = (sample < data).float()
+        if dynamic_bin:
+            sample = torch.rand(data.size()).to(DEVICE)
+            data = (sample < data).float()
 
         optimizer.zero_grad()
         qz_x, px_z, z = model(data, k=k)
@@ -104,8 +108,8 @@ def train(epoch, train_loader, log_interval, model, lr=0.001, k=100):
             print(
                 "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch,
-                    batch_idx * len(data),
-                    len(train_loader.dataset),
+                    batch_idx,
+                    len(train_loader),
                     100.0 * batch_idx / len(train_loader),
                     loss.item(),
                 )
@@ -142,27 +146,6 @@ def test(epoch, model, test_loader, k, batch_size):
     return test_loss
 
 
-def get_mnist(batch_size):
-
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            "../data", train=True, download=True, transform=transforms.ToTensor()
-        ),
-        batch_size=batch_size,
-        shuffle=True,
-        drop_last=True,
-    )
-
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST("../data", train=False, transform=transforms.ToTensor()),
-        batch_size=batch_size,
-        shuffle=True,
-        drop_last=True,
-    )
-
-    return train_loader, test_loader
-
-
 def main():
 
     batch_size = 64
@@ -171,7 +154,7 @@ def main():
     model = VAE()
     model.to(DEVICE)
 
-    train_loader, test_loader = get_mnist(batch_size=batch_size)
+    train_loader, test_loader = load_binary_mnist(batch_size, TRAIN_PATH, TEST_PATH)
 
     train_stats, test_stats = [], []
     for epoch in range(1, epochs + 1):
@@ -188,7 +171,7 @@ def main():
             )
 
     torch.save(model, "./models/mnist_vae.pkl")
-        
+
     print(train_stats, test_stats)
 
 
