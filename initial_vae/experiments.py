@@ -68,8 +68,9 @@ def test_vae_boundary_learning(
         pruned_train = flatten_dataset(elbo_prune(data_probs, prop))
         random_train = random.sample(flatten_dataset(trainset), int(len(trainset) * prop))
        
-        for _ in range(repeats):
+        for rep in range(repeats):
             
+            print(f"Testing proportion {prop}, repeat {rep+1}/{repeats}")
             boundary_loader = torch.utils.data.DataLoader(
                 pruned_train,
                 batch_size=batch_size,

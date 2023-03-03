@@ -3,6 +3,7 @@ from torch import nn
 from typing import Dict, Optional, Any
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 if torch.cuda.is_available():
     DEVICE = "cuda"
@@ -98,11 +99,9 @@ def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False):
 
     net.train()
     net.to(DEVICE)
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
 
         epoch_loss = 0
-        if epoch % 1 == 0:
-            print(f"Epoch {epoch}")
 
         for data in trainset:
             X, y = data
