@@ -4,7 +4,7 @@ import random
 from collections import defaultdict
 
 from data import load_binary_mnist
-from vae import compute_elbo, VAE
+from vae import compute_elbo, VAE, DEVICE
 from network import make_standard_net, train_net, test_net
 
 
@@ -16,15 +16,18 @@ MODEL_PATH = "./models/mnist_vae.pkl"
 @torch.no_grad()
 def sort_dataset_by_elbo(vae, dataset, k=100):
 
+    vae.to(DEVICE)
+
     data_probs = []
     for X, y in tqdm(dataset):
+        X = X.to(DEVICE)
         qz_x, px_z, z = vae(X, k=k)
         elbo = compute_elbo(X, qz_x, px_z, z)
         data_probs.append([X, y, elbo])
 
     data_probs.sort(key=lambda x: x[2])
 
-    return [[i[0], i[1]] for i in data_probs]
+    return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
 def elbo_prune(data_probs, prop):
 
@@ -118,7 +121,7 @@ if __name__ == "__main__":
 
 
     test_vae_boundary_learning(
-        props = [1, 0.5],
+        props = [1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
         epochs=150,
         batch_size=512,
