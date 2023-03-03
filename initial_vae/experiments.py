@@ -2,10 +2,14 @@ import torch
 from tqdm import tqdm
 import random
 from collections import defaultdict
+from sklearn.decomposition import PCA
+from matplotlib import pyplot as plt
+import numpy as np
 
 from data import load_binary_mnist
 from vae import compute_elbo, VAE, DEVICE
 from network import make_standard_net, train_net, test_net
+
 
 
 TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
@@ -45,7 +49,7 @@ def random_prune(dataset, prop, num_classes=10):
 
     return pruned_data
 
-def elbo_prune(data_probs, prop, num_classes=10):
+def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
 
     data_dict = defaultdict(list)
     for X, y in data_probs:
@@ -55,7 +59,11 @@ def elbo_prune(data_probs, prop, num_classes=10):
 
     pruned_data = []
     for class_ in range(num_classes):
-        pruned_data += data_dict[class_][:class_points]
+        if reverse:
+            pruned_data += data_dict[class_][-1 * class_points:]
+        else:
+            pruned_data += data_dict[class_][:class_points]
+
 
     return pruned_data
 
@@ -143,8 +151,43 @@ def test_vae_boundary_learning(
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
 
-if __name__ == "__main__":
+@torch.no_grad()
+def get_latent_dataset(vae, dataset, k=1000):
 
+    latent_datast = []
+    for X, y in tqdm(dataset):
+        X = X.to(DEVICE)
+        qz_x, px_z, z = vae(X, k=k)
+        latent_datast.append([z, y])
+
+    Z = torch.cat([x[0] for x in latent_datast]).squeeze() 
+    y = [x[1].item() for x in latent_datast]
+
+    return Z,y
+
+def visualize_latent_space(k=1):
+
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    vae = torch.load(MODEL_PATH)
+    Z, y = get_latent_dataset(vae, trainset, k=k)
+    n_components = 2
+
+    pca = PCA(n_components=n_components)
+    components = pca.fit_transform(Z)
+
+    total_var = pca.explained_variance_ratio_.sum() * 100
+    print(f"Total explained variance: {total_var}")
+
+    y = np.array(y)
+    labels = np.array(list(range(10)))
+    for label in labels:
+        i = np.where(y == label) 
+        plt.scatter(components[i,0], components[i,1], label=label, s=1)
+
+    plt.legend()
+    plt.savefig("./results/latent_space.png")
+
+if __name__ == "__main__":
 
     test_vae_boundary_learning(
         props = [1, 0.5, 0.1, 0.05, 0.01],
