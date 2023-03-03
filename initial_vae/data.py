@@ -35,7 +35,7 @@ def _binarize_dataloader(dataloader):
     for X, y in dataloader:
         sample = torch.rand(X.size())
         bin_X = (sample < X).float()
-        batch = [bin_X.squeeze(), y.item()]
+        batch = [bin_X.squeeze(0), y.item()]
         binary_dataset.append(batch)
 
     return binary_dataset
