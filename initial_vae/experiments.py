@@ -2,7 +2,8 @@ import torch
 from tqdm import tqdm
 import random
 from collections import defaultdict
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA 
+from sklearn.manifold import TSNE
 from matplotlib import pyplot as plt
 import numpy as np
 
@@ -30,6 +31,8 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
         data_probs.append([X, y, elbo])
 
     data_probs.sort(key=lambda x: x[2])
+
+    breakpoint()
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
@@ -63,7 +66,6 @@ def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
             pruned_data += data_dict[class_][-1 * class_points:]
         else:
             pruned_data += data_dict[class_][:class_points]
-
 
     return pruned_data
 
@@ -172,6 +174,7 @@ def visualize_latent_space(k=1):
     Z, y = get_latent_dataset(vae, trainset, k=k)
     n_components = 2
 
+    # -----Using PCA----- #
     pca = PCA(n_components=n_components)
     components = pca.fit_transform(Z)
 
@@ -185,10 +188,22 @@ def visualize_latent_space(k=1):
         plt.scatter(components[i,0], components[i,1], label=label, s=1)
 
     plt.legend()
-    plt.savefig("./results/latent_space.png")
+    plt.savefig("./results/latent_space_pca.png")
+    plt.clf()
+
+    # -----Using t-SNE----- #
+    tsne = TSNE(n_components=2) 
+    compressed_z = tsne.fit_transform(Z) 
+
+    for label in labels:
+        i = np.where(y == label) 
+        plt.scatter(components[i,0], components[i,1], label=label, s=1)
+
+    plt.legend()
+    plt.savefig("./results/latent_space_tsne.png")
 
 if __name__ == "__main__":
-
+    
     test_vae_boundary_learning(
         props = [1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
@@ -197,3 +212,6 @@ if __name__ == "__main__":
         k=1000,
         lr=0.001
     )
+    
+    #visualize_latent_space()
+
