@@ -67,6 +67,62 @@ def load_binary_mnist(batch_size, train_path, test_path):
 
     return trainset, testset
 
+@torch.no_grad()
+def sort_dataset_by_elbo(vae, dataset, k=100):
+
+    vae.to(DEVICE)
+
+    data_probs = []
+    for X, y in tqdm(dataset):
+        X = X.to(DEVICE)
+        qz_x, px_z, z = vae(X, k=k)
+        elbo = compute_elbo(X, qz_x, px_z, z)
+        data_probs.append([X, y, elbo])
+
+    data_probs.sort(key=lambda x: x[2])
+
+    breakpoint()
+
+    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+
+def random_prune(dataset, prop, num_classes=10):
+
+    class_points = int((len(dataset) * prop) / num_classes)
+    train_shuffle = random.sample(dataset, len(dataset))
+
+    labels = [class_points] * num_classes
+
+    pruned_data = []
+
+    for X, y in train_shuffle:
+        if labels[y.item()] > 0:
+            pruned_data.append([X,y])
+            labels[y.item()] -= 1
+
+    return pruned_data
+
+def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
+
+    data_dict = defaultdict(list)
+    for X, y in data_probs:
+        data_dict[y.item()].append([X,y])
+
+    class_points = int((len(data_probs) * prop) / num_classes)
+
+    pruned_data = []
+    for class_ in range(num_classes):
+        if reverse:
+            pruned_data += data_dict[class_][-1 * class_points:]
+        else:
+            pruned_data += data_dict[class_][:class_points]
+
+    return pruned_data
+
+def flatten_dataset(dataset):
+    output = []
+    for X,y in dataset:
+        output.append([X.flatten(), y.item()])
+    return output
 
 if __name__ == "__main__":
 
