@@ -6,6 +6,10 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import pickle
+import random
+from tqdm import tqdm
+from vae import compute_elbo, DEVICE
+from collections import defaultdict
 
 
 def get_mnist(batch_size):
@@ -55,18 +59,6 @@ def gen_binary_mnist(train_path, test_path):
         pickle.dump(testset, f)
 
 
-def load_binary_mnist(batch_size, train_path, test_path):
-
-    with open(train_path, "rb") as f:
-        trainset = pickle.load(f)
-    with open(test_path, "rb") as f:
-        testset = pickle.load(f)
-
-    trainset = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    testset = DataLoader(testset, batch_size=batch_size, shuffle=True)
-
-    return trainset, testset
-
 @torch.no_grad()
 def sort_dataset_by_elbo(vae, dataset, k=100):
 
@@ -74,6 +66,9 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     data_probs = []
     for X, y in tqdm(dataset):
+        # Assert batch size is 1
+        assert X.shape[0] == 1
+
         X = X.to(DEVICE)
         qz_x, px_z, z = vae(X, k=k)
         elbo = compute_elbo(X, qz_x, px_z, z)
@@ -81,9 +76,31 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     data_probs.sort(key=lambda x: x[2])
 
-    breakpoint()
+    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+
+
+@torch.no_grad()
+def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
+
+    for vae in vae_dict.values():
+        vae.to(DEVICE)
+
+    data_probs = []
+    for X, y in tqdm(dataset):
+        # Assert batch size is 1
+        assert X.shape[0] == 1
+
+        X = X.to(DEVICE)
+        vae = vae_dict[y.item()]
+
+        qz_x, px_z, z = vae(X, k=k)
+        elbo = compute_elbo(X, qz_x, px_z, z)
+        data_probs.append([X, y, elbo])
+
+    data_probs.sort(key=lambda x: x[2])
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
+
 
 def random_prune(dataset, prop, num_classes=10):
 
@@ -96,33 +113,38 @@ def random_prune(dataset, prop, num_classes=10):
 
     for X, y in train_shuffle:
         if labels[y.item()] > 0:
-            pruned_data.append([X,y])
+            pruned_data.append([X, y])
             labels[y.item()] -= 1
 
     return pruned_data
+
 
 def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
 
     data_dict = defaultdict(list)
     for X, y in data_probs:
-        data_dict[y.item()].append([X,y])
+        data_dict[y.item()].append([X, y])
 
     class_points = int((len(data_probs) * prop) / num_classes)
 
     pruned_data = []
     for class_ in range(num_classes):
         if reverse:
-            pruned_data += data_dict[class_][-1 * class_points:]
+            pruned_data += data_dict[class_][-1 * class_points :]
         else:
             pruned_data += data_dict[class_][:class_points]
 
+    # Shuffle data
+    pruned_data = random.sample(pruned_data, len(pruned_data))
     return pruned_data
+
 
 def flatten_dataset(dataset):
     output = []
-    for X,y in dataset:
+    for X, y in dataset:
         output.append([X.flatten(), y.item()])
     return output
+
 
 if __name__ == "__main__":
 
@@ -134,5 +156,3 @@ if __name__ == "__main__":
         train_path=train_path,
         test_path=test_path,
     )
-
-    trainset, testset = load_binary_mnist(64, train_path, test_path)

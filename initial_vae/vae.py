@@ -4,15 +4,13 @@ import torch
 import torch.distributions as dist
 from torch.nn import functional as F
 from torch import nn, optim
-from torchvision import datasets, transforms
 from torchvision.utils import save_image
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-from data import get_mnist
-from data import load_binary_mnist
 
-import os
-import time
 import matplotlib
+import pickle
+from collections import defaultdict
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -24,6 +22,19 @@ else:
 
 TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
 TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
+
+
+def load_binary_mnist(batch_size, train_path, test_path):
+
+    with open(train_path, "rb") as f:
+        trainset = pickle.load(f)
+    with open(test_path, "rb") as f:
+        testset = pickle.load(f)
+
+    trainset = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+    testset = DataLoader(testset, batch_size=batch_size, shuffle=True)
+
+    return trainset, testset
 
 
 class VAE(nn.Module):
@@ -146,35 +157,104 @@ def test(epoch, model, test_loader, k, batch_size):
     return test_loss
 
 
-def main():
+def train_vae(
+    train_loader,
+    test_loader,
+    batch_size,
+    epochs,
+    log_interval,
+    save_path="./models/vae.pkl",
+    k=1000,
+    device=DEVICE,
+):
 
-    batch_size = 64
-    epochs = 10
-    log_interval = 100
     model = VAE()
-    model.to(DEVICE)
-
-    train_loader, test_loader = load_binary_mnist(batch_size, TRAIN_PATH, TEST_PATH)
+    model.to(device)
 
     train_stats, test_stats = [], []
     for epoch in range(1, epochs + 1):
         print(f"Epoch {epoch}")
         train_stats.append(train(epoch, train_loader, log_interval, model))
-        test_stats.append(
-            test(epoch, model, test_loader, k=1000, batch_size=batch_size)
-        )
+        test_stats.append(test(epoch, model, test_loader, k=k, batch_size=batch_size))
         with torch.no_grad():
-            sample = torch.randn(64, 20).to(DEVICE)
+            sample = torch.randn(64, 20).to(device)
             sample = model.decode(sample).cpu()
             save_image(
                 sample.view(64, 1, 28, 28), "./results/sample_" + str(epoch) + ".png"
             )
 
-    torch.save(model, "./models/mnist_vae.pkl")
+    torch.save(model, save_path)
 
     print(train_stats, test_stats)
+    return model
+
+
+def train_vae_on_mnist(
+    train_path=TRAIN_PATH,
+    test_path=TEST_PATH,
+    batch_size=64,
+    epochs=10,
+    log_interval=100,
+    save_path="./models/vae_mnist.pkl",
+):
+
+    train_loader, test_loader = load_binary_mnist(batch_size, train_path, test_path)
+
+    train_vae(
+        train_loader=train_loader,
+        test_loader=test_loader,
+        batch_size=batch_size,
+        epochs=epochs,
+        log_interval=log_interval,
+        save_path=save_path,
+    )
+
+
+def train_class_spec_vaes(
+    train_path=TRAIN_PATH,
+    test_path=TEST_PATH,
+    batch_size=64,
+    epochs=10,
+    log_interval=100,
+    save_path="./models/vae_mnist.pkl",
+):
+
+    train_loader, test_loader = load_binary_mnist(batch_size, train_path, test_path)
+
+    # Break train loader into class specific datasets
+    train_sep = defaultdict(list)
+    test_sep = defaultdict(list)
+
+    for loader, class_sep in zip([train_loader, test_loader], [train_sep, test_sep]):
+        for X, y in loader:
+            for data_point, label in zip(X, y):
+                class_sep[label.item()].append([data_point, label])
+
+    classes = train_sep.keys()
+
+    for class_ in classes:
+        print(f"Training VAE on class {class_}")
+
+        train_data = train_sep[class_]
+        # Each class should have at least one piece of data
+        assert class_ in test_sep
+        test_data = test_sep[class_]
+
+        class_train_loader = DataLoader(train_data, batch_size=batch_size)
+        class_test_loader = DataLoader(test_data, batch_size=batch_size)
+
+        train_vae(
+            train_loader,
+            test_loader,
+            batch_size,
+            epochs=1,
+            log_interval=log_interval,
+            save_path="./models/vae_" + str(class_) + ".pkl",
+            k=1,
+        )
 
 
 if __name__ == "__main__":
 
-    main()
+    # train_vae_on_mnist()
+    train_class_spec_vaes()

@@ -12,6 +12,7 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = "cpu"
 
+
 def _make_net(
     input_dim: int,
     num_classes: int,
@@ -40,6 +41,7 @@ def _make_net(
 
     return nn.Sequential(*input, *hidden, *output)
 
+
 def make_standard_net(
     input_dim: int = 784,
     num_classes: int = 10,
@@ -51,7 +53,6 @@ def make_standard_net(
     return _make_net(
         input_dim, num_classes, hidden_units, hidden_layers, dropout_layer=None
     )
-
 
 
 def test_net(net, dataset):
@@ -131,4 +132,3 @@ def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False):
         plt.show()
 
     return epoch_losses
-
