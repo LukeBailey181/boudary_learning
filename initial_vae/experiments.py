@@ -12,7 +12,7 @@ from data import (
     sort_dataset_by_class_elbo,
     sort_dataset_by_latent_neighbors,
     random_prune,
-    elbo_prune,
+    ordered_prune,
     flatten_dataset,
 )
 from vae import compute_elbo, VAE, DEVICE, load_binary_mnist
@@ -46,7 +46,7 @@ def test_vae_boundary_learning(
     results = defaultdict(list)
     for prop in props:
 
-        pruned_train = flatten_dataset(elbo_prune(data_probs, prop))
+        pruned_train = flatten_dataset(ordered_prune(data_probs, prop))
         random_train = flatten_dataset(random_prune(data_probs, prop))
 
         for rep in range(repeats):
@@ -179,7 +179,7 @@ def test_class_vaes_boundary_learning(
     results = defaultdict(list)
     for prop in props:
 
-        pruned_train = flatten_dataset(elbo_prune(data_probs, prop))
+        pruned_train = flatten_dataset(ordered_prune(data_probs, prop))
         random_train = flatten_dataset(random_prune(data_probs, prop))
 
         for rep in range(repeats):
@@ -228,8 +228,20 @@ def test_class_vaes_boundary_learning(
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
 
+def test_nn_dataset_sort():
+
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    vae_dict = load_mnist_vae_dict()
+    ordered_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    pruned_data = ordered_prune(ordered_data, 0.5)
+
+    breakpoint()
+
 if __name__ == "__main__":
 
+    test_nn_dataset_sort()
+
+    """
     test_class_vaes_boundary_learning(
         props=[0.1],
         repeats=1,
@@ -246,5 +258,6 @@ if __name__ == "__main__":
         k=1000,
         lr=0.001,
     )
+    """
 
     # visualize_latent_space()

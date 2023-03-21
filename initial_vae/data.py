@@ -101,14 +101,13 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
 @torch.no_grad()
-def sort_dataset_by_latent_neighbors(vae_dict, dataset, k=100):
+def sort_dataset_by_latent_neighbors(vae_dict, dataset):
     """Returns dataset sorted by distance of points to centroid
     of latent space cluster corresponding to that class"""
 
     for vae in vae_dict.values():
         vae.to(DEVICE)
 
-    data_probs = []
     embeddings = defaultdict(list)
     for X, y in tqdm(dataset):
         # Assert batch size is 1
@@ -116,18 +115,28 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, k=100):
 
         X = X.to(DEVICE)
         vae = vae_dict[y.item()]
-        qz_x, px_z, z = vae(X, k=k)
-        embeddings[y.item()].append(z)
+        qz_x, px_z, z = vae(X, k=1)
+        embeddings[y.item()].append([X, y, z.squeeze()])
 
     # Calculate centroids
     centroids = {}
-    for class_, ebds in embeddings.items(): 
-        breakpoint() 
-        pass
+    for class_, class_data, in embeddings.items(): 
+        # concatenate and find mean along the first dimension
+        embds = [i[2] for i in class_data] 
+        centroids[class_] = torch.mean(torch.stack(embds), dim=0)
 
-    data_probs.sort(key=lambda x: x[2])
-
-    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+    # Find distances to cetroids 
+    data_distances = []
+    for class_, class_data in embeddings.items():
+        for X, y, z in class_data:
+            distance = (z - centroids[class_]).pow(2).sum().sqrt()
+            assert(distance.item() >= 0)
+            data_distances.append([X, y, distance.item()])
+    
+    # Sort with largest distances first
+    data_distances.sort(key=lambda x: x[2], reverse=True)
+    
+    return [[i[0].to("cpu"), i[1]] for i in data_distances]
 
 def random_prune(dataset, prop, num_classes=10):
 
@@ -146,13 +155,13 @@ def random_prune(dataset, prop, num_classes=10):
     return pruned_data
 
 
-def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
+def ordered_prune(sorted_data, prop, num_classes=10, reverse=False):
 
     data_dict = defaultdict(list)
-    for X, y in data_probs:
+    for X, y in sorted_data:
         data_dict[y.item()].append([X, y])
 
-    class_points = int((len(data_probs) * prop) / num_classes)
+    class_points = int((len(sorted_data) * prop) / num_classes)
 
     pruned_data = []
     for class_ in range(num_classes):
@@ -163,6 +172,7 @@ def elbo_prune(data_probs, prop, num_classes=10, reverse=False):
 
     # Shuffle data
     pruned_data = random.sample(pruned_data, len(pruned_data))
+
     return pruned_data
 
 
