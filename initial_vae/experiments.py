@@ -10,6 +10,7 @@ import numpy as np
 from data import (
     sort_dataset_by_elbo,
     sort_dataset_by_class_elbo,
+    sort_dataset_by_latent_neighbors,
     random_prune,
     elbo_prune,
     flatten_dataset,
@@ -227,24 +228,22 @@ def test_class_vaes_boundary_learning(
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
 
-
 if __name__ == "__main__":
 
+    test_class_vaes_boundary_learning(
+        props=[0.1],
+        repeats=1,
+        epochs=1,
+        batch_size=512,
+        k=1,
+        lr=0.001,
+    )
     test_vae_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
         epochs=150,
         batch_size=512,
         k=1000,
-        lr=0.001,
-    )
-
-    test_class_vaes_boundary_learning(
-        props=[1],
-        repeats=0.1,
-        epochs=1,
-        batch_size=512,
-        k=1,
         lr=0.001,
     )
 

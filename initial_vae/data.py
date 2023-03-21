@@ -78,7 +78,6 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
-
 @torch.no_grad()
 def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
@@ -101,6 +100,34 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
+@torch.no_grad()
+def sort_dataset_by_latent_neighbors(vae_dict, dataset, k=100):
+    """Returns dataset sorted by distance of points to centroid
+    of latent space cluster corresponding to that class"""
+
+    for vae in vae_dict.values():
+        vae.to(DEVICE)
+
+    data_probs = []
+    embeddings = defaultdict(list)
+    for X, y in tqdm(dataset):
+        # Assert batch size is 1
+        assert X.shape[0] == 1
+
+        X = X.to(DEVICE)
+        vae = vae_dict[y.item()]
+        qz_x, px_z, z = vae(X, k=k)
+        embeddings[y.item()].append(z)
+
+    # Calculate centroids
+    centroids = {}
+    for class_, ebds in embeddings.items(): 
+        breakpoint() 
+        pass
+
+    data_probs.sort(key=lambda x: x[2])
+
+    return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
 def random_prune(dataset, prop, num_classes=10):
 
