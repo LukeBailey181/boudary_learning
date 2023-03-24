@@ -94,12 +94,13 @@ def compute_elbo_dreg(x, qz_x, px_z, z):
     return (reweight * lw).sum(0).mean(0)
 
 
-def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin=False):
+def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin=False, verbose=False):
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.train()
+
     train_loss = 0
-    for batch_idx, (data, _) in tqdm(enumerate(train_loader)):
+    for batch_idx, (data, _) in enumerate(train_loader):
         data = data.to(DEVICE)
         # Dynamic binarization
         if dynamic_bin:
@@ -115,7 +116,7 @@ def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin
         train_loss += -loss.item()
         optimizer.step()
 
-        if batch_idx % log_interval == 0:
+        if batch_idx % log_interval == 0 and verbose:
             print(
                 "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch,
@@ -127,12 +128,13 @@ def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin
             )
 
     avg_loss = train_loss / (batch_idx + 1)  # type: ignore
-    print("====> Epoch: {} Average loss: {:.4f}".format(epoch, avg_loss))
+    if verbose:
+        print("====> Epoch: {} Average loss: {:.4f}".format(epoch, avg_loss))
 
     return avg_loss
 
 
-def test(epoch, model, test_loader, k, batch_size):
+def test(epoch, model, test_loader, k, batch_size, verbose=False):
     model.eval()
     test_loss = 0
     with torch.no_grad():
@@ -153,7 +155,9 @@ def test(epoch, model, test_loader, k, batch_size):
                 )
 
     test_loss /= i + 1  # type: ignore
-    print("====> Test set loss: {:.4f}".format(test_loss))
+    if verbose:
+        print("====> Test set loss: {:.4f}".format(test_loss))
+
     return test_loss
 
 
@@ -172,8 +176,8 @@ def train_vae(
     model.to(device)
 
     train_stats, test_stats = [], []
-    for epoch in range(1, epochs + 1):
-        print(f"Epoch {epoch}")
+    for epoch in tqdm(range(1, epochs + 1)):
+        #print(f"Epoch {epoch}")
         train_stats.append(train(epoch, train_loader, log_interval, model))
         test_stats.append(test(epoch, model, test_loader, k=k, batch_size=batch_size))
         with torch.no_grad():
@@ -185,7 +189,11 @@ def train_vae(
 
     torch.save(model, save_path)
 
-    print(train_stats, test_stats)
+    print("Train Loss:")
+    print(train_stats)
+    print("Test Loss:")
+    print(test_stats)
+        
     return model
 
 

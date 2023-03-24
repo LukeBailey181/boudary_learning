@@ -159,14 +159,39 @@ def load_mnist_vae_dict():
     return vaes
 
 
-def test_class_vaes_boundary_learning(
+def train_mlp_on_pruned_dataset(train_dataset, test_loader, results, model_losses, run_key, lr, epochs, batch_size):
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+
+    # ----- Train model with boundary -----#
+    net = make_standard_net(
+        num_classes=10,
+        input_dim=784,
+        hidden_units=1200,
+        hidden_layers=2,
+    )
+    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
+    _, acc = test_net(net, test_loader)
+
+    results[run_key].append(acc)
+    model_losses[run_key].append(epoch_losses)
+
+def test_boundary_learning(
     props, repeats=3, epochs=100, batch_size=512, k=100, lr=0.001
 ):
 
     vae_dict = load_mnist_vae_dict()
+    multi_class_vae = torch.load(MODEL_PATH)
     # Collect elbo values
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-    data_probs = sort_dataset_by_class_elbo(vae_dict, trainset, k)
+    class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k)
+    elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k)
+    nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
@@ -179,51 +204,19 @@ def test_class_vaes_boundary_learning(
     results = defaultdict(list)
     for prop in props:
 
-        pruned_train = flatten_dataset(ordered_prune(data_probs, prop))
-        random_train = flatten_dataset(random_prune(data_probs, prop))
+        class_elbo_pruned_train = flatten_dataset(ordered_prune(class_elbo_data, prop))
+        elbo_pruned_train = flatten_dataset(ordered_prune(elbo_data, prop))
+        nn_pruned_train = flatten_dataset(ordered_prune(nn_data, prop))
+        random_train = flatten_dataset(random_prune(elbo_data, prop))
 
         for rep in range(repeats):
 
             print(f"Testing proportion {prop}, repeat {rep+1}/{repeats}")
-            boundary_loader = torch.utils.data.DataLoader(
-                pruned_train,
-                batch_size=batch_size,
-                shuffle=True,
-                pin_memory=True,
-            )
-            random_loader = torch.utils.data.DataLoader(
-                random_train,
-                batch_size=batch_size,
-                shuffle=True,
-                pin_memory=True,
-            )
 
-            # ----- Train model with boundary -----#
-            net = make_standard_net(
-                num_classes=10,
-                input_dim=784,
-                hidden_units=1200,
-                hidden_layers=2,
-            )
-            epoch_losses = train_net(epochs, net, boundary_loader, preproc=True, lr=lr)
-
-            _, boundary_acc = test_net(net, test_loader)
-
-            results[("boundary", prop)].append(boundary_acc)
-            model_losses[("boundary", prop)].append(epoch_losses)
-
-            # ----- Train model with random sample -----#
-            net = make_standard_net(
-                num_classes=10,
-                input_dim=784,
-                hidden_units=1200,
-                hidden_layers=2,
-            )
-            epoch_losses = train_net(epochs, net, random_loader, preproc=True, lr=lr)
-            _, random_acc = test_net(net, test_loader)
-
-            results[("random", prop)].append(random_acc)
-            model_losses[("random", prop)].append(epoch_losses)
+            train_mlp_on_pruned_dataset(class_elbo_pruned_train, test_loader, results, model_losses, ("class_elbo_prune", prop), lr, epochs, batch_size)
+            train_mlp_on_pruned_dataset(elbo_pruned_train, test_loader, results, model_losses, ("elbo_prune", prop), lr, epochs, batch_size)
+            train_mlp_on_pruned_dataset(nn_pruned_train, test_loader, results, model_losses, ("latent_nn_prun", prop), lr, epochs, batch_size)
+            train_mlp_on_pruned_dataset(random_train, test_loader, results, model_losses, ("random_prune", prop), lr, epochs, batch_size)
 
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
@@ -239,17 +232,17 @@ def test_nn_dataset_sort():
 
 if __name__ == "__main__":
 
-    test_nn_dataset_sort()
+    #test_nn_dataset_sort()
 
-    """
-    test_class_vaes_boundary_learning(
-        props=[0.1],
-        repeats=1,
-        epochs=1,
+    test_boundary_learning(
+        props=[1, 0.5, 0.1, 0.05, 0.01],
+        repeats=3,
+        epochs=150,
         batch_size=512,
-        k=1,
+        k=1000,
         lr=0.001,
     )
+    """
     test_vae_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
