@@ -214,7 +214,7 @@ def train_class_spec_vaes(
     train_path=TRAIN_PATH,
     test_path=TEST_PATH,
     batch_size=64,
-    epochs=10,
+    epochs=30,
     log_interval=100,
     save_path="./models/vae_mnist.pkl",
 ):
@@ -244,17 +244,17 @@ def train_class_spec_vaes(
         class_test_loader = DataLoader(test_data, batch_size=batch_size)
 
         train_vae(
-            train_loader,
-            test_loader,
+            class_train_loader,
+            class_test_loader,
             batch_size,
-            epochs=1,
+            epochs=epochs,
             log_interval=log_interval,
             save_path="./models/vae_" + str(class_) + ".pkl",
-            k=1,
+            k=1000,
         )
 
 
 if __name__ == "__main__":
 
     # train_vae_on_mnist()
-    train_class_spec_vaes()
+    train_class_spec_vaes(epochs=30)
