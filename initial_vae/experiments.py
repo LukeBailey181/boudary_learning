@@ -284,9 +284,8 @@ def test_dataset_sort():
 
 if __name__ == "__main__":
 
-    test_dataset_sort()
+    #test_dataset_sort()
 
-    """
     test_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
@@ -295,7 +294,6 @@ if __name__ == "__main__":
         k=1000,
         lr=0.001,
     )
-    """
     """
     test_vae_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],

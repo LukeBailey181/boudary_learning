@@ -118,7 +118,7 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
         X = X.to(DEVICE)
         vae = vae_dict[y.item()]
         qz_x, px_z, z = vae(X, k=1)
-        embeddings[y.item()].append([X, y, z.squeeze()])
+        embeddings[y.item()].append([X, y, z.squeeze().to("cpu")])
 
     # Calculate centroids and covariances
     gaussians = {}
@@ -136,17 +136,16 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
     data_probs = []
     for X, y in tqdm(dataset):
         # Assert batch size is 1
-        assert X.shape[0] == 1
 
         X = X.to(DEVICE)
 
         gaussian = gaussians[y.item()]
         vae = vae_dict[y.item()]
         _, _, z = vae(X, k=k)
-        dens = gaussian.pdf(z.squeeze())
+        dens = gaussian.pdf(z.squeeze().to("cpu"))
 
         data_probs.append([X, y, dens])
-
+        
     # Sort with largest distances first
     data_probs.sort(key=lambda x: x[2])
 
