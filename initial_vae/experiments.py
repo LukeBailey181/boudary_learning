@@ -11,6 +11,7 @@ from data import (
     sort_dataset_by_elbo,
     sort_dataset_by_class_elbo,
     sort_dataset_by_latent_neighbors,
+    sort_dataset_by_fitted_gaussian,
     random_prune,
     ordered_prune,
     flatten_dataset,
@@ -159,7 +160,9 @@ def load_mnist_vae_dict():
     return vaes
 
 
-def train_mlp_on_pruned_dataset(train_dataset, test_loader, results, model_losses, run_key, lr, epochs, batch_size):
+def train_mlp_on_pruned_dataset(
+    train_dataset, test_loader, results, model_losses, run_key, lr, epochs, batch_size
+):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -181,6 +184,7 @@ def train_mlp_on_pruned_dataset(train_dataset, test_loader, results, model_losse
     results[run_key].append(acc)
     model_losses[run_key].append(epoch_losses)
 
+
 def test_boundary_learning(
     props, repeats=3, epochs=100, batch_size=512, k=100, lr=0.001
 ):
@@ -192,6 +196,7 @@ def test_boundary_learning(
     class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k)
     elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k)
     nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset, k)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
@@ -207,33 +212,81 @@ def test_boundary_learning(
         class_elbo_pruned_train = flatten_dataset(ordered_prune(class_elbo_data, prop))
         elbo_pruned_train = flatten_dataset(ordered_prune(elbo_data, prop))
         nn_pruned_train = flatten_dataset(ordered_prune(nn_data, prop))
+        gaussian_train = flatten_dataset(ordered_prune(gaussian_data, prop))
         random_train = flatten_dataset(random_prune(elbo_data, prop))
 
         for rep in range(repeats):
 
             print(f"Testing proportion {prop}, repeat {rep+1}/{repeats}")
 
-            train_mlp_on_pruned_dataset(class_elbo_pruned_train, test_loader, results, model_losses, ("class_elbo_prune", prop), lr, epochs, batch_size)
-            train_mlp_on_pruned_dataset(elbo_pruned_train, test_loader, results, model_losses, ("elbo_prune", prop), lr, epochs, batch_size)
-            train_mlp_on_pruned_dataset(nn_pruned_train, test_loader, results, model_losses, ("latent_nn_prun", prop), lr, epochs, batch_size)
-            train_mlp_on_pruned_dataset(random_train, test_loader, results, model_losses, ("random_prune", prop), lr, epochs, batch_size)
+            train_mlp_on_pruned_dataset(
+                class_elbo_pruned_train,
+                test_loader,
+                results,
+                model_losses,
+                ("class_elbo_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                elbo_pruned_train,
+                test_loader,
+                results,
+                model_losses,
+                ("elbo_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                nn_pruned_train,
+                test_loader,
+                results,
+                model_losses,
+                ("latent_nn_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                gaussian_train,
+                test_loader,
+                results,
+                model_losses,
+                ("gaussian_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                random_train,
+                test_loader,
+                results,
+                model_losses,
+                ("random_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
 
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
 
-def test_nn_dataset_sort():
+
+def test_dataset_sort():
 
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
     vae_dict = load_mnist_vae_dict()
-    ordered_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    ordered_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset, k=1)
     pruned_data = ordered_prune(ordered_data, 0.5)
 
-    breakpoint()
 
 if __name__ == "__main__":
 
-    #test_nn_dataset_sort()
+    test_dataset_sort()
 
+    """
     test_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
@@ -242,6 +295,7 @@ if __name__ == "__main__":
         k=1000,
         lr=0.001,
     )
+    """
     """
     test_vae_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],

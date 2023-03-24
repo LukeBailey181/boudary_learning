@@ -10,6 +10,8 @@ import random
 from tqdm import tqdm
 from vae import compute_elbo, DEVICE
 from collections import defaultdict
+import numpy as np
+from scipy.stats import multivariate_normal
 
 
 def get_mnist(batch_size):
@@ -78,6 +80,7 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
+
 @torch.no_grad()
 def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
@@ -100,6 +103,57 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
+
+@torch.no_grad()
+def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
+
+    for vae in vae_dict.values():
+        vae.to(DEVICE)
+
+    embeddings = defaultdict(list)
+    for X, y in tqdm(dataset):
+        # Assert batch size is 1
+        assert X.shape[0] == 1
+
+        X = X.to(DEVICE)
+        vae = vae_dict[y.item()]
+        qz_x, px_z, z = vae(X, k=1)
+        embeddings[y.item()].append([X, y, z.squeeze()])
+
+    # Calculate centroids and covariances
+    gaussians = {}
+    for (
+        class_,
+        class_data,
+    ) in embeddings.items():
+        # concatenate and find mean along the first dimension
+        embds = [i[2] for i in class_data]
+        embds = torch.stack(embds)
+        mean = torch.mean(embds, dim=0)
+        cov = np.cov(np.array(embds).T)
+        gaussians[class_] = multivariate_normal(mean=mean, cov=cov)
+
+    data_probs = []
+    for X, y in tqdm(dataset):
+        # Assert batch size is 1
+        assert X.shape[0] == 1
+
+        X = X.to(DEVICE)
+
+        gaussian = gaussians[y.item()]
+        vae = vae_dict[y.item()]
+        _, _, z = vae(X, k=k)
+        dens = gaussian.pdf(z.squeeze())
+
+        data_probs.append([X, y, dens])
+
+    # Sort with largest distances first
+    data_probs.sort(key=lambda x: x[2])
+
+    breakpoint()
+    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+
+
 @torch.no_grad()
 def sort_dataset_by_latent_neighbors(vae_dict, dataset):
     """Returns dataset sorted by distance of points to centroid
@@ -120,23 +174,27 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset):
 
     # Calculate centroids
     centroids = {}
-    for class_, class_data, in embeddings.items(): 
+    for (
+        class_,
+        class_data,
+    ) in embeddings.items():
         # concatenate and find mean along the first dimension
-        embds = [i[2] for i in class_data] 
+        embds = [i[2] for i in class_data]
         centroids[class_] = torch.mean(torch.stack(embds), dim=0)
 
-    # Find distances to cetroids 
+    # Find distances to cetroids
     data_distances = []
     for class_, class_data in embeddings.items():
         for X, y, z in class_data:
             distance = (z - centroids[class_]).pow(2).sum().sqrt()
-            assert(distance.item() >= 0)
+            assert distance.item() >= 0
             data_distances.append([X, y, distance.item()])
-    
+
     # Sort with largest distances first
     data_distances.sort(key=lambda x: x[2], reverse=True)
-    
+
     return [[i[0].to("cpu"), i[1]] for i in data_distances]
+
 
 def random_prune(dataset, prop, num_classes=10):
 

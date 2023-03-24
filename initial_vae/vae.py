@@ -94,7 +94,16 @@ def compute_elbo_dreg(x, qz_x, px_z, z):
     return (reweight * lw).sum(0).mean(0)
 
 
-def train(epoch, train_loader, log_interval, model, lr=0.001, k=100, dynamic_bin=False, verbose=False):
+def train(
+    epoch,
+    train_loader,
+    log_interval,
+    model,
+    lr=0.001,
+    k=100,
+    dynamic_bin=False,
+    verbose=False,
+):
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.train()
@@ -177,7 +186,7 @@ def train_vae(
 
     train_stats, test_stats = [], []
     for epoch in tqdm(range(1, epochs + 1)):
-        #print(f"Epoch {epoch}")
+        # print(f"Epoch {epoch}")
         train_stats.append(train(epoch, train_loader, log_interval, model))
         test_stats.append(test(epoch, model, test_loader, k=k, batch_size=batch_size))
         with torch.no_grad():
@@ -193,7 +202,7 @@ def train_vae(
     print(train_stats)
     print("Test Loss:")
     print(test_stats)
-        
+
     return model
 
 
