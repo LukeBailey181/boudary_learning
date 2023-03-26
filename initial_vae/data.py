@@ -105,7 +105,7 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
 
 @torch.no_grad()
-def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
+def sort_dataset_by_fitted_gaussian(vae_dict, dataset):
 
     for vae in vae_dict.values():
         vae.to(DEVICE)
@@ -141,7 +141,7 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
 
         gaussian = gaussians[y.item()]
         vae = vae_dict[y.item()]
-        _, _, z = vae(X, k=k)
+        _, _, z = vae(X, k=1)
         dens = gaussian.pdf(z.squeeze().to("cpu"))
 
         data_probs.append([X, y, dens])
@@ -149,7 +149,6 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset, k=100):
     # Sort with largest distances first
     data_probs.sort(key=lambda x: x[2])
 
-    breakpoint()
     return [[i[0].to("cpu"), i[1]] for i in data_probs]
 
 

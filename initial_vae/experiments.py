@@ -196,7 +196,7 @@ def test_boundary_learning(
     class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k)
     elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k)
     nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset, k)
+    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
