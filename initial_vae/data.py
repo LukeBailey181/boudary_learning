@@ -211,11 +211,11 @@ def random_prune(dataset, prop, num_classes=10):
     return pruned_data
 
 
-def ordered_prune(sorted_data, prop, num_classes=10, reverse=False):
+def ordered_prune(sorted_data, prop, num_classes=10, reverse=False, shuffle=True):
 
     data_dict = defaultdict(list)
-    for X, y in sorted_data:
-        data_dict[y.item()].append([X, y])
+    for idx, (X, y) in enumerate(sorted_data):
+        data_dict[y.item()].append([X, y, idx])
 
     class_points = int((len(sorted_data) * prop) / num_classes)
 
@@ -226,8 +226,15 @@ def ordered_prune(sorted_data, prop, num_classes=10, reverse=False):
         else:
             pruned_data += data_dict[class_][:class_points]
 
+    # Sort by index to preserver original ordering
+    pruned_data.sort(key=lambda x: x[2])
+
+    # Remove indexes
+    pruned_data = [[i[0], i[1]] for i in pruned_data]
+
     # Shuffle data
-    pruned_data = random.sample(pruned_data, len(pruned_data))
+    if shuffle:
+        pruned_data = random.sample(pruned_data, len(pruned_data))
 
     return pruned_data
 

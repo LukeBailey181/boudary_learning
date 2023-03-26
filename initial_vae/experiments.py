@@ -5,6 +5,7 @@ from collections import defaultdict
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from matplotlib import pyplot as plt
+from torchvision.utils import save_image
 import numpy as np
 
 from data import (
@@ -274,6 +275,38 @@ def test_boundary_learning(
     print(f"losses = {dict(model_losses)}")
 
 
+def visualize_pruned_data(k=1000, prop=0.01):
+    
+    
+    vae_dict = load_mnist_vae_dict()
+    multi_class_vae = torch.load(MODEL_PATH)
+
+    # Collect sorted data
+    trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k=k)
+    elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k=k)
+    nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+
+    # Prune data
+    pruned_data = {
+            "class_elbo": ordered_prune(class_elbo_data, prop, shuffle=False),
+            "elbo" : ordered_prune(elbo_data, prop, shuffle=False),
+            "nn" : ordered_prune(nn_data, prop, shuffle=False),
+            "gaussian" : ordered_prune(gaussian_data, prop, shuffle=False),
+            "random" : random_prune(elbo_data, prop),
+    }
+    
+    # Visualize`
+    for name, data in pruned_data.items():
+        save_image(
+            [x[0].squeeze(0) for x in data],
+            "./results/" + name + "_prop_" + str(prop) + ".png",
+            normalize=True,
+            nrow=20,
+        )
+
+
 def test_dataset_sort():
 
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
@@ -285,7 +318,9 @@ def test_dataset_sort():
 if __name__ == "__main__":
 
     #test_dataset_sort()
+    visualize_pruned_data(k=1, prop=0.01)
 
+    """
     test_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
         repeats=3,
@@ -294,6 +329,8 @@ if __name__ == "__main__":
         k=1000,
         lr=0.001,
     )
+    """
+
     """
     test_vae_boundary_learning(
         props=[1, 0.5, 0.1, 0.05, 0.01],
