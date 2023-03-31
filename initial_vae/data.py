@@ -78,7 +78,7 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     data_probs.sort(key=lambda x: x[2])
 
-    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
 
 
 @torch.no_grad()
@@ -101,7 +101,7 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
     data_probs.sort(key=lambda x: x[2])
 
-    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
 
 
 @torch.no_grad()
@@ -145,11 +145,11 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset):
         dens = gaussian.pdf(z.squeeze().to("cpu"))
 
         data_probs.append([X, y, dens])
-        
+
     # Sort with largest distances first
     data_probs.sort(key=lambda x: x[2])
 
-    return [[i[0].to("cpu"), i[1]] for i in data_probs]
+    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
 
 
 @torch.no_grad()
@@ -191,7 +191,10 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset):
     # Sort with largest distances first
     data_distances.sort(key=lambda x: x[2], reverse=True)
 
-    return [[i[0].to("cpu"), i[1]] for i in data_distances]
+    return (
+        [[i[0].to("cpu"), i[1]] for i in data_distances],
+        [i[-1] for i in data_distances],
+    )
 
 
 def random_prune(dataset, prop, num_classes=10):

@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 import random
 from collections import defaultdict
@@ -17,6 +18,7 @@ from data import (
     ordered_prune,
     flatten_dataset,
 )
+
 from vae import compute_elbo, VAE, DEVICE, load_binary_mnist
 from network import make_standard_net, train_net, test_net
 
@@ -35,7 +37,7 @@ def test_vae_boundary_learning(
     # Collect elbo values
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
     vae = torch.load(MODEL_PATH)
-    data_probs = sort_dataset_by_elbo(vae, trainset, k)
+    data_probs, _ = sort_dataset_by_elbo(vae, trainset, k)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
@@ -185,6 +187,8 @@ def train_mlp_on_pruned_dataset(
     results[run_key].append(acc)
     model_losses[run_key].append(epoch_losses)
 
+    return net
+
 
 def test_boundary_learning(
     props, repeats=3, epochs=100, batch_size=512, k=100, lr=0.001
@@ -194,10 +198,10 @@ def test_boundary_learning(
     multi_class_vae = torch.load(MODEL_PATH)
     # Collect elbo values
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-    class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k)
-    elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k)
-    nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k)
+    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k)
+    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
@@ -276,27 +280,26 @@ def test_boundary_learning(
 
 
 def visualize_pruned_data(k=1000, prop=0.01):
-    
-    
+
     vae_dict = load_mnist_vae_dict()
     multi_class_vae = torch.load(MODEL_PATH)
 
     # Collect sorted data
     trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-    class_elbo_data = sort_dataset_by_class_elbo(vae_dict, trainset, k=k)
-    elbo_data = sort_dataset_by_elbo(multi_class_vae, trainset, k=k)
-    nn_data = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k=k)
+    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k=k)
+    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
 
     # Prune data
     pruned_data = {
-            "class_elbo": ordered_prune(class_elbo_data, prop, shuffle=False),
-            "elbo" : ordered_prune(elbo_data, prop, shuffle=False),
-            "nn" : ordered_prune(nn_data, prop, shuffle=False),
-            "gaussian" : ordered_prune(gaussian_data, prop, shuffle=False),
-            "random" : random_prune(elbo_data, prop),
+        "class_elbo": ordered_prune(class_elbo_data, prop, shuffle=False),
+        "elbo": ordered_prune(elbo_data, prop, shuffle=False),
+        "nn": ordered_prune(nn_data, prop, shuffle=False),
+        "gaussian": ordered_prune(gaussian_data, prop, shuffle=False),
+        "random": random_prune(elbo_data, prop),
     }
-    
+
     # Visualize`
     for name, data in pruned_data.items():
         save_image(
@@ -307,18 +310,94 @@ def visualize_pruned_data(k=1000, prop=0.01):
         )
 
 
+def get_elbo_histogram_data(k=1000):
+
+    vae_dict = load_mnist_vae_dict()
+    multi_class_vae = torch.load(MODEL_PATH)
+
+    trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    _, class_elbos = sort_dataset_by_class_elbo(vae_dict, trainset, k)
+    _, elbos = sort_dataset_by_elbo(multi_class_vae, trainset, k)
+
+    return {"class_elbos": class_elbos, "elbos": elbos}
+
+
+def test_entropy_against_pruning_technique(
+    epochs=150, batch_size=512, lr=0.0005, k=1000
+):
+
+    vae_dict = load_mnist_vae_dict()
+    multi_class_vae = torch.load(MODEL_PATH)
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+
+    train_loader = torch.utils.data.DataLoader(
+        flatten_dataset(trainset),
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        flatten_dataset(testset),
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+
+    # ----- Train model -----#
+    net = make_standard_net(
+        num_classes=10,
+        input_dim=784,
+        hidden_units=1200,
+        hidden_layers=2,
+    )
+    net.eval()
+    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
+    _, acc = test_net(net, test_loader)
+
+    class_elbo_data, class_elbos = sort_dataset_by_class_elbo(vae_dict, trainset, k)
+    elbo_data, elbos = sort_dataset_by_elbo(multi_class_vae, trainset, k)
+    nn_data, distances = sort_dataset_by_latent_neighbors(vae_dict, trainset)
+    gaussian_data, likelihood = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+
+    # Get entropy for each point
+    data = {
+        "class_elbo": [class_elbo_data, class_elbos],
+        "eblo": [elbo_data, elbos],
+        "nn_data": [nn_data, distances],
+        "class_eblo": [gaussian_data, likelihood],
+    }
+
+    plotting_data = {}
+    with torch.no_grad():
+        for name, (dataset, metric) in data.items():
+
+            dataset = flatten_dataset(dataset)
+
+            entropy = []
+            for X, y in dataset:
+
+                pred = net(X)
+                logits = F.softmax(pred, dim=0)
+                entropy.append(-torch.sum(logits * torch.log(logits), dim=0).item())
+
+            plotting_data[name] = [metric, entropy]
+
+    return plotting_data
+
+
 def test_dataset_sort():
 
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
     vae_dict = load_mnist_vae_dict()
-    ordered_data = sort_dataset_by_fitted_gaussian(vae_dict, trainset, k=1)
+    ordered_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset, k=1)
     pruned_data = ordered_prune(ordered_data, 0.5)
 
 
 if __name__ == "__main__":
 
-    #test_dataset_sort()
-    visualize_pruned_data(k=1, prop=0.01)
+    # test_dataset_sort()
+    # visualize_pruned_data(k=1, prop=0.01)
+    test_entropy_against_pruning_technique(epochs=1, k=1)
 
     """
     test_boundary_learning(
