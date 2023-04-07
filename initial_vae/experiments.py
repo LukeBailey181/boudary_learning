@@ -26,6 +26,11 @@ from network import make_standard_net, train_net, test_net
 TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
 TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
 
+ELBO_DATA_PATH = "../data/ordered_data/eblo.pkl"
+CLASS_ELBO_DATA_PATH = "../data/ordered_data/class_eblo.pkl"
+NEIGHBORS_DATA_PATH = "../data/ordered_data/latent_neighbors.pkl"
+GAUSSIAN_DATA_PATH = "../data/ordered_data/gaussian_data.pkl"
+
 MODEL_PATH = "./models/mnist_vae.pkl"
 MODELS_ROOT_PATH = "./models/"
 
@@ -384,6 +389,17 @@ def test_entropy_against_pruning_technique(
             plotting_data[name] = [metric, entropy]
 
     return plotting_data
+
+def sort_datasets(k=1000):
+
+    vae_dict = load_mnist_vae_dict()
+    multi_class_vae = torch.load(MODEL_PATH)
+
+    trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    sort_dataset_by_class_elbo(vae_dict, trainset, k, save_path=ELBO_DATA_PATH)
+    sort_dataset_by_elbo(multi_class_vae, trainset, k, save_path=CLASS_ELBO_DATA_PATH)
+    sort_dataset_by_latent_neighbors(vae_dict, trainset, save_path=NEIGHBORS_DATA_PATH)
+    sort_dataset_by_fitted_gaussian(vae_dict, trainset, save_path=GAUSSIAN_DATA_PATH)
 
 
 def test_dataset_sort():

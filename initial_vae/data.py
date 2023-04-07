@@ -62,7 +62,11 @@ def gen_binary_mnist(train_path, test_path):
 
 
 @torch.no_grad()
-def sort_dataset_by_elbo(vae, dataset, k=100):
+def sort_dataset_by_elbo(vae, dataset, k=100, load_path=None, save_path=None):
+
+    if load_path is not None:
+        with open(load_path, "rb") as f:
+            return pickle.load(f)
 
     vae.to(DEVICE)
 
@@ -78,11 +82,20 @@ def sort_dataset_by_elbo(vae, dataset, k=100):
 
     data_probs.sort(key=lambda x: x[2])
 
-    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
+    output = [[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs]
+    if save_path is not None:
+        with open(save_path, "wb") as f:
+            pickle.dump(output, f)
+
+    return output
 
 
 @torch.no_grad()
-def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
+def sort_dataset_by_class_elbo(vae_dict, dataset, k=100, load_path=None, save_path=None):
+
+    if load_path is not None:
+        with open(load_path, "rb") as f:
+            return pickle.load(f)
 
     for vae in vae_dict.values():
         vae.to(DEVICE)
@@ -101,11 +114,19 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100):
 
     data_probs.sort(key=lambda x: x[2])
 
-    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
+    output = [[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs]
+    if save_path is not None:
+        with open(save_path, "wb") as f:
+            pickle.dump(output, f)
 
+    return output
 
 @torch.no_grad()
-def sort_dataset_by_fitted_gaussian(vae_dict, dataset):
+def sort_dataset_by_fitted_gaussian(vae_dict, dataset, load_path=None, save_path=None):
+
+    if load_path is not None:
+        with open(load_path, "rb") as f:
+            return pickle.load(f)
 
     for vae in vae_dict.values():
         vae.to(DEVICE)
@@ -149,13 +170,23 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset):
     # Sort with largest distances first
     data_probs.sort(key=lambda x: x[2])
 
-    return ([[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs])
+    output = [[i[0].to("cpu"), i[1]] for i in data_probs], [i[-1] for i in data_probs]
+    if save_path is not None:
+        with open(save_path, "wb") as f:
+            pickle.dump(output, f)
+
+    return output
+
 
 
 @torch.no_grad()
-def sort_dataset_by_latent_neighbors(vae_dict, dataset):
+def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_path=None):
     """Returns dataset sorted by distance of points to centroid
     of latent space cluster corresponding to that class"""
+
+    if load_path is not None:
+        with open(load_path, "rb") as f:
+            return pickle.load(f)
 
     for vae in vae_dict.values():
         vae.to(DEVICE)
@@ -191,10 +222,12 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset):
     # Sort with largest distances first
     data_distances.sort(key=lambda x: x[2], reverse=True)
 
-    return (
-        [[i[0].to("cpu"), i[1]] for i in data_distances],
-        [i[-1] for i in data_distances],
-    )
+    output = [[i[0].to("cpu"), i[1]] for i in data_distances], [i[-1] for i in data_distances]
+    if save_path is not None:
+        with open(save_path, "wb") as f:
+            pickle.dump(output, f)
+
+    return output
 
 
 def random_prune(dataset, prop, num_classes=10):
