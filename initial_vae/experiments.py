@@ -362,9 +362,9 @@ def test_entropy_against_pruning_technique(
     # Get entropy for each point
     data = {
         "class_elbo": [class_elbo_data, class_elbos],
-        "eblo": [elbo_data, elbos],
+        "elbo": [elbo_data, elbos],
         "nn_data": [nn_data, distances],
-        "class_eblo": [gaussian_data, likelihood],
+        "gaussian_data": [gaussian_data, likelihood],
     }
 
     plotting_data = {}
@@ -374,7 +374,8 @@ def test_entropy_against_pruning_technique(
             dataset = flatten_dataset(dataset)
 
             entropy = []
-            for X, y in dataset:
+            print(f"Process dataset {name}")
+            for X, y in tqdm(dataset):
 
                 pred = net(X)
                 logits = F.softmax(pred, dim=0)
@@ -397,7 +398,7 @@ if __name__ == "__main__":
 
     # test_dataset_sort()
     # visualize_pruned_data(k=1, prop=0.01)
-    test_entropy_against_pruning_technique(epochs=1, k=1)
+    test_entropy_against_pruning_technique(epochs=150, k=1000)
 
     """
     test_boundary_learning(
