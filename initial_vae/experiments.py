@@ -374,6 +374,7 @@ def test_entropy_against_pruning_technique(
 
     plotting_data = {}
     with torch.no_grad():
+        net.to(DEVICE)
         for name, (dataset, metric) in data.items():
 
             dataset = flatten_dataset(dataset)
@@ -381,9 +382,9 @@ def test_entropy_against_pruning_technique(
             entropy = []
             print(f"Process dataset {name}")
             for X, y in tqdm(dataset):
-
+                X = X.to(DEVICE)
                 pred = net(X)
-                logits = F.softmax(pred, dim=0)
+                logits = F.softmax(pred, dim=0).to("cpu")
                 entropy.append(-torch.sum(logits * torch.log(logits), dim=0).item())
 
             plotting_data[name] = [metric, entropy]
