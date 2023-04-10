@@ -14,6 +14,7 @@ from data import (
     sort_dataset_by_class_elbo,
     sort_dataset_by_latent_neighbors,
     sort_dataset_by_fitted_gaussian,
+    sort_dataset_by_entropy,
     random_prune,
     ordered_prune,
     flatten_dataset,
@@ -30,6 +31,7 @@ ELBO_DATA_PATH = "../data/ordered_data/eblo.pkl"
 CLASS_ELBO_DATA_PATH = "../data/ordered_data/class_eblo.pkl"
 NEIGHBORS_DATA_PATH = "../data/ordered_data/latent_neighbors.pkl"
 GAUSSIAN_DATA_PATH = "../data/ordered_data/gaussian_data.pkl"
+ENTROPY_DATA_PATH = "../data/ordered_data/entropy_data.pkl"
 
 MODEL_PATH = "./models/mnist_vae.pkl"
 MODELS_ROOT_PATH = "./models/"
@@ -196,17 +198,18 @@ def train_mlp_on_pruned_dataset(
 
 
 def test_boundary_learning(
-    props, repeats=3, epochs=100, batch_size=512, k=100, lr=0.001
+    props, repeats=3, epochs=100, batch_size=512, k=1000, lr=0.001
 ):
 
     vae_dict = load_mnist_vae_dict()
     multi_class_vae = torch.load(MODEL_PATH)
     # Collect elbo values
     trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k)
-    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k)
-    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k, load_path=CLASS_ELBO_DATA_PATH)
+    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k, load_path=ELBO_DATA_PATH)
+    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset, load_path=NEIGHBORS_DATA_PATH)
+    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset, load_path=GAUSSIAN_DATA_PATH)
+    entropy_data , _ = sort_dataset_by_entropy(trainset, testset, load_path=ENTROPY_DATA_PATH)
 
     test_loader = torch.utils.data.DataLoader(
         flatten_dataset(testset),
@@ -220,9 +223,13 @@ def test_boundary_learning(
     for prop in props:
 
         class_elbo_pruned_train = flatten_dataset(ordered_prune(class_elbo_data, prop))
+        class_elbo_pruned_train_50_50 = flatten_dataset(ordered_prune(class_elbo_data, prop, prop_random=0.5))
         elbo_pruned_train = flatten_dataset(ordered_prune(elbo_data, prop))
+        elbo_pruned_train_50_50 = flatten_dataset(ordered_prune(elbo_data, prop, prop_random=0.5))
         nn_pruned_train = flatten_dataset(ordered_prune(nn_data, prop))
         gaussian_train = flatten_dataset(ordered_prune(gaussian_data, prop))
+        entropy_train = flatten_dataset(ordered_prune(entropy_data, prop))
+        entropy_train_50_50 = flatten_dataset(ordered_prune(entropy_data, prop, prop_random=0.5))
         random_train = flatten_dataset(random_prune(elbo_data, prop))
 
         for rep in range(repeats):
@@ -279,6 +286,46 @@ def test_boundary_learning(
                 epochs,
                 batch_size,
             )
+            train_mlp_on_pruned_dataset(
+                entropy_train,
+                test_loader,
+                results,
+                model_losses,
+                ("entropy_prune", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                entropy_train_50_50,
+                test_loader,
+                results,
+                model_losses,
+                ("entropy_prune_50_50", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                class_elbo_pruned_train_50_50,
+                test_loader,
+                results,
+                model_losses,
+                ("class_elbo_prune_50_50", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
+            train_mlp_on_pruned_dataset(
+                elbo_pruned_train_50_50,
+                test_loader,
+                results,
+                model_losses,
+                ("elbo_prune_50_50", prop),
+                lr,
+                epochs,
+                batch_size,
+            )
 
     print(f"results = {dict(results)}")
     print(f"losses = {dict(model_losses)}")
@@ -290,11 +337,12 @@ def visualize_pruned_data(k=1000, prop=0.01):
     multi_class_vae = torch.load(MODEL_PATH)
 
     # Collect sorted data
-    trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k=k)
-    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k=k)
-    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k=k, load_path=CLASS_ELBO_DATA_PATH)
+    elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k=k, load_path=ELBO_DATA_PATH)
+    nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset, load_path=NEIGHBORS_DATA_PATH)
+    gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset, load_path=GAUSSIAN_DATA_PATH)
+    entropy_data , _ = sort_dataset_by_entropy(trainset, testset, load_path=ENTROPY_DATA_PATH)
 
     # Prune data
     pruned_data = {
@@ -303,6 +351,7 @@ def visualize_pruned_data(k=1000, prop=0.01):
         "nn": ordered_prune(nn_data, prop, shuffle=False),
         "gaussian": ordered_prune(gaussian_data, prop, shuffle=False),
         "random": random_prune(elbo_data, prop),
+        "entropy": ordered_prune(entropy_data, prop, shuffle=False)
     }
 
     # Visualize`
@@ -358,11 +407,12 @@ def test_entropy_against_pruning_technique(
     net.eval()
     epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
     _, acc = test_net(net, test_loader)
+    print(f"MODEL ACCURACY: {acc}")
 
-    class_elbo_data, class_elbos = sort_dataset_by_class_elbo(vae_dict, trainset, k)
-    elbo_data, elbos = sort_dataset_by_elbo(multi_class_vae, trainset, k)
-    nn_data, distances = sort_dataset_by_latent_neighbors(vae_dict, trainset)
-    gaussian_data, likelihood = sort_dataset_by_fitted_gaussian(vae_dict, trainset)
+    class_elbo_data, class_elbos = sort_dataset_by_class_elbo(vae_dict, trainset, k, load_path=CLASS_ELBO_DATA_PATH)
+    elbo_data, elbos = sort_dataset_by_elbo(multi_class_vae, trainset, k, load_path=ELBO_DATA_PATH)
+    nn_data, distances = sort_dataset_by_latent_neighbors(vae_dict, trainset, load_path=NEIGHBORS_DATA_PATH)
+    gaussian_data, likelihood = sort_dataset_by_fitted_gaussian(vae_dict, trainset, load_path=GAUSSIAN_DATA_PATH)
 
     # Get entropy for each point
     data = {
@@ -389,18 +439,19 @@ def test_entropy_against_pruning_technique(
 
             plotting_data[name] = [metric, entropy]
 
-    return plotting_data
+    return plotting_data, epoch_losses
 
 def sort_datasets(k=1000):
 
     vae_dict = load_mnist_vae_dict()
     multi_class_vae = torch.load(MODEL_PATH)
 
-    trainset, _ = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
     sort_dataset_by_class_elbo(vae_dict, trainset, k, save_path=ELBO_DATA_PATH)
     sort_dataset_by_elbo(multi_class_vae, trainset, k, save_path=CLASS_ELBO_DATA_PATH)
     sort_dataset_by_latent_neighbors(vae_dict, trainset, save_path=NEIGHBORS_DATA_PATH)
     sort_dataset_by_fitted_gaussian(vae_dict, trainset, save_path=GAUSSIAN_DATA_PATH)
+    sort_dataset_by_entropy(trainset, testset, save_path=ENTROPY_DATA_PATH)
 
 
 def test_dataset_sort():
@@ -413,14 +464,17 @@ def test_dataset_sort():
 
 if __name__ == "__main__":
 
+    #trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+    #sort_dataset_by_entropy(trainset, testset, save_path=ENTROPY_DATA_PATH)
     # test_dataset_sort()
-    # visualize_pruned_data(k=1, prop=0.01)
-    test_entropy_against_pruning_technique(epochs=150, k=1000)
+    visualize_pruned_data(k=1, prop=0.01)
+    ##test_entropy_against_pruning_technique(epochs=150, k=1000)
 
+    #sort_datasets()
     """
     test_boundary_learning(
-        props=[1, 0.5, 0.1, 0.05, 0.01],
-        repeats=3,
+        props=[0.98, 0.5, 0.1, 0.05, 0.01],
+        repeats=2,
         epochs=150,
         batch_size=512,
         k=1000,

@@ -12,6 +12,7 @@ from vae import compute_elbo, DEVICE
 from collections import defaultdict
 import numpy as np
 from scipy.stats import multivariate_normal
+from network import make_standard_net, train_net, test_net
 
 
 def get_mnist(batch_size):
@@ -229,6 +230,56 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_pat
 
     return output
 
+def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
+
+    if load_path is not None:
+        with open(load_path, "rb") as f:
+            return pickle.load(f)
+
+    # Train model on dataset
+    train_loader = torch.utils.data.DataLoader(
+        flatten_dataset(trainset),
+        batch_size=512,
+        shuffle=True,
+        pin_memory=True,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        flatten_dataset(testset),
+        batch_size=512,
+        shuffle=True,
+        pin_memory=True,
+    )
+
+    # ----- Train model -----#
+    net = make_standard_net(
+        num_classes=10,
+        input_dim=784,
+        hidden_units=1200,
+        hidden_layers=2,
+    )
+    net.eval()
+    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
+    _, acc = test_net(net, test_loader)
+    print(f"MODEL ACCURACY: {acc}")
+
+    data_entropy = []
+    with torch.no_grad():
+        for X, y in tqdm(trainset):
+            X_flat = X.flatten()
+            X_flat = X_flat.to(DEVICE)
+            pred = net(X_flat)
+            logits = F.softmax(pred, dim=0).to("cpu")
+            entropy = -torch.sum(logits * torch.log(logits), dim=0).item()
+            data_entropy.append([X,y, entropy])
+
+    data_entropy.sort(key=lambda x: x[2], reverse=True)
+
+    output = [[i[0].to("cpu"), i[1]] for i in data_entropy], [i[-1] for i in data_entropy]
+    if save_path is not None:
+        with open(save_path, "wb") as f:
+            pickle.dump(output, f)
+
+    return output
 
 def random_prune(dataset, prop, num_classes=10):
 
@@ -247,20 +298,25 @@ def random_prune(dataset, prop, num_classes=10):
     return pruned_data
 
 
-def ordered_prune(sorted_data, prop, num_classes=10, reverse=False, shuffle=True):
+def ordered_prune(sorted_data, prop, num_classes=10, reverse=False, shuffle=True, prop_random=0):
 
     data_dict = defaultdict(list)
     for idx, (X, y) in enumerate(sorted_data):
         data_dict[y.item()].append([X, y, idx])
 
-    class_points = int((len(sorted_data) * prop) / num_classes)
+    class_points = int((len(sorted_data) * prop  * (1 - prop_random)) / num_classes)
+    random_points = int((len(sorted_data) * prop * prop_random) / num_classes)
 
     pruned_data = []
     for class_ in range(num_classes):
         if reverse:
             pruned_data += data_dict[class_][-1 * class_points :]
+            #pruned_data += random.sample(data_dict[class_][: -1 * class_points], random_points)
+            pruned_data += random.sample(data_dict[class_], random_points)
         else:
             pruned_data += data_dict[class_][:class_points]
+            #pruned_data += random.sample(data_dict[class_][class_points:], random_points)
+            pruned_data += random.sample(data_dict[class_], random_points)
 
     # Sort by index to preserver original ordering
     pruned_data.sort(key=lambda x: x[2])
