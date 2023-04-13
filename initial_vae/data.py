@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from torch.distributions import Categorical
 from torchvision.utils import save_image
 import pickle
 import random
@@ -231,6 +232,15 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_pat
     return output
 
 def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
+    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr)
+
+def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
+    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr)
+
+def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
+    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr)
+
+def sort_dataset_by_model_metric(trainset, testset, metric_func, reverse_sort, load_path=None, save_path=None, epochs=150, lr=0.005):
 
     if load_path is not None:
         with open(load_path, "rb") as f:
@@ -262,19 +272,19 @@ def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, e
     _, acc = test_net(net, test_loader)
     print(f"MODEL ACCURACY: {acc}")
 
-    data_entropy = []
+    data_metric = []
     with torch.no_grad():
         for X, y in tqdm(trainset):
             X_flat = X.flatten()
             X_flat = X_flat.to(DEVICE)
             pred = net(X_flat)
             logits = F.softmax(pred, dim=0).to("cpu")
-            entropy = -torch.sum(logits * torch.log(logits), dim=0).item()
-            data_entropy.append([X,y, entropy])
+            metric = metric_func(logits)
+            data_metric.append([X,y, metric])
 
-    data_entropy.sort(key=lambda x: x[2], reverse=True)
+    data_metric.sort(key=lambda x: x[2], reverse=reverse_sort)
 
-    output = [[i[0].to("cpu"), i[1]] for i in data_entropy], [i[-1] for i in data_entropy]
+    output = [[i[0].to("cpu"), i[1]] for i in data_metric], [i[-1] for i in data_metric]
     if save_path is not None:
         with open(save_path, "wb") as f:
             pickle.dump(output, f)
@@ -337,6 +347,45 @@ def flatten_dataset(dataset):
         output.append([X.flatten(), y.item()])
     return output
 
+
+def calc_entropy(logits):
+    """
+    Keyword aguments:
+        logits - M dim tensor corresponding to logits for single input 
+    Returns:
+        Scalar entropy value
+    """
+    return Categorical(probs = logits).entropy().item()
+
+def calc_p_p_complement_sum(logits):
+    """
+    Keyword aguments:
+        logits - M dim tensor corresponding to logits for single input 
+    Returns:
+        Scalar value corresponding to sum_c p_c (1-p_c)
+    """
+
+    return torch.sum(logits * (1 - logits)).item()
+
+def calc_top_prob_diff(logits):
+    """
+    Keyword aguments:
+        logits - M dim tensor corresponding to logits for single input 
+    Returns:
+        Scalar value corresponding to difference between two highest values 
+        in logits
+    """
+    sorted_p, _ = torch.sort(logits, descending=True)
+    p_1, p_2 = sorted_p[0], sorted_p[1]
+
+    if (p_1 - p_2).item() < 0:
+        print(p_1)
+        print(p_2)
+        print(logits)
+        print(sorted_p)
+        raise(ValueError)
+
+    return (p_1 - p_2).item()
 
 if __name__ == "__main__":
 

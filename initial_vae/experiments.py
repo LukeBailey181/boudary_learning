@@ -15,6 +15,8 @@ from data import (
     sort_dataset_by_latent_neighbors,
     sort_dataset_by_fitted_gaussian,
     sort_dataset_by_entropy,
+    sort_dataset_by_p_p_comp,
+    sort_dataset_by_top_prob_diff,
     random_prune,
     ordered_prune,
     flatten_dataset,
@@ -32,6 +34,8 @@ CLASS_ELBO_DATA_PATH = "../data/ordered_data/class_eblo.pkl"
 NEIGHBORS_DATA_PATH = "../data/ordered_data/latent_neighbors.pkl"
 GAUSSIAN_DATA_PATH = "../data/ordered_data/gaussian_data.pkl"
 ENTROPY_DATA_PATH = "../data/ordered_data/entropy_data.pkl"
+TOP_PROB_DIFF_DATA_PATH = "../data/ordered_data/top_prob_diff_data,pkl"
+P_P_COMP_DATA_PATH =  "../data/ordered_data/p_p_comp_data.plk"
 
 MODEL_PATH = "./models/mnist_vae.pkl"
 MODELS_ROOT_PATH = "./models/"
@@ -375,6 +379,61 @@ def get_elbo_histogram_data(k=1000):
 
     return {"class_elbos": class_elbos, "elbos": elbos}
 
+def test_metric_against_pruning_technique(
+        metric_func, epochs=150, batch_size=512, lr=0.0005, k=1000
+):
+    """
+    metric_func - logits are M dim, return should be scalar 
+    """ 
+
+    vae_dict = load_mnist_vae_dict()
+    trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+
+    train_loader = torch.utils.data.DataLoader(
+        flatten_dataset(trainset),
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        flatten_dataset(testset),
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+
+    # ----- Train model -----#
+    net = make_standard_net(
+        num_classes=10,
+        input_dim=784,
+        hidden_units=1200,
+        hidden_layers=2,
+    )
+    net.eval()
+    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
+    _, acc = test_net(net, test_loader)
+    print(f"MODEL ACCURACY: {acc}")
+
+    class_elbo_data, class_elbos = sort_dataset_by_class_elbo(vae_dict, trainset, k, load_path=CLASS_ELBO_DATA_PATH)
+
+    plotting_data = defaultdict(list)
+    with torch.no_grad():
+        net.to(DEVICE)
+        dataset = flatten_dataset(trainset)
+
+        entropy = []
+        print("Processing dataset")
+        for elbo, (X, y) in tqdm(zip(class_elbos, dataset)):
+            X = X.to(DEVICE)
+            pred = net(X)
+            logits = F.softmax(pred, dim=0).to("cpu")
+            metric = metric_func(logits)
+
+            if isinstance(y, torch.Tensor):
+                y = y.item()
+            plotting_data[y].append([elbo, metric])
+        
+    return plotting_data
 
 def test_entropy_against_pruning_technique(
     epochs=150, batch_size=512, lr=0.0005, k=1000
@@ -452,6 +511,8 @@ def sort_datasets(k=1000):
     sort_dataset_by_latent_neighbors(vae_dict, trainset, save_path=NEIGHBORS_DATA_PATH)
     sort_dataset_by_fitted_gaussian(vae_dict, trainset, save_path=GAUSSIAN_DATA_PATH)
     sort_dataset_by_entropy(trainset, testset, save_path=ENTROPY_DATA_PATH)
+    sort_dataset_by_p_p_comp(trainset, testset, save_path=P_P_COMP_DATA_PATH)
+    sort_dataset_by_top_prob_diff(trainset, testset, save_path=TOP_PROB_DIFF_DATA_PATH)
 
 
 def test_dataset_sort():
@@ -467,10 +528,10 @@ if __name__ == "__main__":
     #trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
     #sort_dataset_by_entropy(trainset, testset, save_path=ENTROPY_DATA_PATH)
     # test_dataset_sort()
-    visualize_pruned_data(k=1, prop=0.01)
+    # visualize_pruned_data(k=1, prop=0.01)
     ##test_entropy_against_pruning_technique(epochs=150, k=1000)
 
-    #sort_datasets()
+    sort_datasets()
     """
     test_boundary_learning(
         props=[0.98, 0.5, 0.1, 0.05, 0.01],
