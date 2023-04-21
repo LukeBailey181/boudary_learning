@@ -38,35 +38,135 @@ def load_binary_mnist(batch_size, train_path, test_path):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim=20):
+    def __init__(
+            self, 
+            dataset_name="mnist", 
+            latent_dim=20,
+        ):
+        """
+        Args:
+            dataset_name: one of {mnist, cifar10} indicating the dataset 
+                that the VAE will be trained on. 
+            latent_dim: dimension of latent space. 
+        """
+
         super(VAE, self).__init__()
 
-        self.fc1 = nn.Linear(784, 400)
-        self.fc2 = nn.Linear(400, 400)
-        self.fc31 = nn.Linear(400, latent_dim)
-        self.fc32 = nn.Linear(400, latent_dim)
-        self.fc4 = nn.Linear(latent_dim, 400)
-        self.fc5 = nn.Linear(400, 400)
-        self.fc6 = nn.Linear(400, 784)
+        self.image_size = image_size
+        self.channel_num = channel_num
+        self.kernel_num = kernel_num
+
+        self.dataset_name = dataset_name
+        if dataset_name == "mnist":
+            self.fc1 = nn.Linear(784, 400)
+            self.fc2 = nn.Linear(400, 400)
+            self.fc31 = nn.Linear(400, latent_dim)
+            self.fc32 = nn.Linear(400, latent_dim)
+            self.fc4 = nn.Linear(latent_dim, 400)
+            self.fc5 = nn.Linear(400, 400)
+            self.fc6 = nn.Linear(400, 784)
+        elif dataset_name == "cifar10":
+            image_size = 32*32, 
+            channel_num = 3, 
+            kernel_num = 128,
+
+            # encoder
+            self.encoder = nn.Sequential(
+            self._conv(channel_num, kernel_num // 4),
+            self._conv(kernel_num // 4, kernel_num // 2),
+            self._conv(kernel_num // 2, kernel_num),
+            )
+
+             # encoded feature's size and volume
+            self.feature_size = image_size // 8
+            self.feature_volume = kernel_num * (self.feature_size ** 2)
+
+            # q, end of encoder
+            self.q_mean = self._linear(self.feature_volume, latent_dim, relu=False)
+            self.q_logvar = self._linear(self.feature_volume, latent_dim, relu=False)
+
+            # projection
+            self.project = self._linear(latent_dim, self.feature_volume, relu=False)
+
+            # decoder
+            self.decoder = nn.Sequential(
+                self._deconv(kernel_num, kernel_num // 2),
+                self._deconv(kernel_num // 2, kernel_num // 4),
+                self._deconv(kernel_num // 4, channel_num),
+                nn.Sigmoid()
+            )
+
+        else:
+            raise ValueError(f"dataset_name of {dataset_name} not one of (mnist, cifar10)")
 
     def encode(self, x):
         net = x
-        net = F.relu(self.fc1(net))
-        net = F.relu(self.fc2(net))
-        return self.fc31(net), self.fc32(net).exp()
+
+        if self.dataset_name == "mnist":
+            net = F.relu(self.fc1(net))
+            net = F.relu(self.fc2(net))
+            return self.fc31(net), self.fc32(net).exp()
+        elif self.dataset_name == "cifar10":
+
+            encoded = self.encoder(net)
+            unrolled = encoded.view(-1, self.feature_volume)
+            mean, logvar = self.q_mean(unrolled), self.q_logvar(unrolled)
+            return mean, logvar
 
     def decode(self, z):
         net = z
-        net = F.relu(self.fc4(net))
-        net = F.relu(self.fc5(net))
-        return self.fc6(net)
+
+        if self.dataset_name == "mnist":
+            net = F.relu(self.fc4(net))
+            net = F.relu(self.fc5(net))
+            return self.fc6(net)
+        elif self.dataset_name == "cifar10":
+            # TODO IMPLEMENT THIS
+            pass
 
     def forward(self, x, k=1):
-        x = x.view(-1, 784)
-        qz_x = dist.Normal(*self.encode(x))
-        z = qz_x.rsample(torch.Size([k]))
-        px_z = dist.Bernoulli(logits=self.decode(z), validate_args=False)
-        return qz_x, px_z, z
+
+        if self.dataset_name == "mnist":
+            x = x.view(-1, 784)
+            qz_x = dist.Normal(*self.encode(x))
+            z = qz_x.rsample(torch.Size([k]))
+            px_z = dist.Bernoulli(logits=self.decode(z), validate_args=False)
+            return qz_x, px_z, z
+        elif self.dataset_name == "cifar10":
+            # TODO IMPLEMENT THIS
+            pass
+
+    # ---------------------- # 
+    # -----CIFAR LAYERS----- #
+    # ---------------------- # 
+    
+    def _conv(self, channel_size, kernel_num):
+        """Conv layer for cifar10 encoder"""
+        return nn.Sequential(
+            nn.Conv2d(
+                channel_size, kernel_num,
+                kernel_size=4, stride=2, padding=1,
+            ),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU(),
+        )
+
+    def _deconv(self, channel_num, kernel_num):
+        """Conv layer for cifar10 decoder"""
+        return nn.Sequential(
+            nn.ConvTranspose2d(
+                channel_num, kernel_num,
+                kernel_size=4, stride=2, padding=1,
+            ),
+            nn.BatchNorm2d(kernel_num),
+            nn.ReLU(),
+        )
+
+    def _linear(self, in_size, out_size, relu=True):
+        return nn.Sequential(
+            nn.Linear(in_size, out_size),
+            nn.ReLU(),
+        ) if relu else nn.Linear(in_size, out_size)
 
 
 def compute_elbo(x, qz_x, px_z, z):
