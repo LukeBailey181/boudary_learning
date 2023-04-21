@@ -11,13 +11,13 @@ else:
     DEVICE = "cpu"
 
 
-def _make_net(
+def make_net(
     input_dim: int,
     num_classes: int,
     hidden_units: int,
     hidden_layers: int,
     dropout_layer: Optional[Any] = None,
-    dropout_kargs: Dict[str, Any] = {},
+    dropout_kwargs: Dict[str, Any] = {},
 ) -> nn.Module:
     """Helper function for making NNs"""
 
@@ -26,19 +26,36 @@ def _make_net(
         nn.ReLU(),
     ]
     if dropout_layer is not None:
-        input.append(dropout_layer(**dropout_kargs))
+        input.append(dropout_layer(**dropout_kwargs))
 
     hidden = []
     for _ in range(hidden_layers):
         hidden.append(nn.Linear(hidden_units, hidden_units))
         hidden.append(nn.ReLU())
         if dropout_layer is not None:
-            hidden.append(dropout_layer(**dropout_kargs))
+            hidden.append(dropout_layer(**dropout_kwargs))
 
     output = [nn.Linear(hidden_units, num_classes)]
 
     return nn.Sequential(*input, *hidden, *output)
 
+def make_dropoout_net(
+    input_dim: int = 784,
+    num_classes: int = 10,
+    hidden_units: int = 100,
+    hidden_layers: int = 2,
+    p: float = 0.5,
+) -> nn.Module:
+    """Return a NN that uses standard pytorch dropout"""
+
+    return make_net(
+        input_dim,
+        num_classes,
+        hidden_units,
+        hidden_layers,
+        dropout_layer=nn.Dropout,
+        dropout_kwargs={"p": p},
+    )
 
 def make_standard_net(
     input_dim: int = 784,
@@ -48,7 +65,7 @@ def make_standard_net(
 ) -> nn.Module:
     """Return a NN without dropout"""
 
-    return _make_net(
+    return make_net(
         input_dim, num_classes, hidden_units, hidden_layers, dropout_layer=None
     )
 

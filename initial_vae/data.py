@@ -9,12 +9,14 @@ from torchvision.utils import save_image
 import pickle
 import random
 from tqdm import tqdm
-from vae import compute_elbo, DEVICE
+from vae import compute_elbo, DEVICE, load_binary_mnist
 from collections import defaultdict
 import numpy as np
 from scipy.stats import multivariate_normal
 from network import make_standard_net, train_net, test_net
 
+TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
+TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
 
 def get_mnist(batch_size):
 
@@ -62,6 +64,18 @@ def gen_binary_mnist(train_path, test_path):
     with open(test_path, "wb") as f:
         pickle.dump(testset, f)
 
+def load_class_spec_mnist(train_path, test_path, classes=(0,1)):
+
+    trainset, testset = load_binary_mnist(1, train_path, test_path)
+
+    class_spec_train, class_spec_test = [], []
+    classes = set(classes)
+    for dataset, new_dataset in zip([trainset, testset], [class_spec_train, class_spec_test]):
+        for X,y in dataset:
+            if y.item() in classes:
+                new_dataset.append([X,y])
+    
+    return class_spec_train, class_spec_test
 
 @torch.no_grad()
 def sort_dataset_by_elbo(vae, dataset, k=100, load_path=None, save_path=None):
@@ -231,16 +245,16 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_pat
 
     return output
 
-def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
-    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr)
+def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
+    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr, num_classes)
 
-def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
-    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr)
+def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
+    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr, num_classes)
 
-def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005):
-    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr)
+def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
+    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr, num_classes)
 
-def sort_dataset_by_model_metric(trainset, testset, metric_func, reverse_sort, load_path=None, save_path=None, epochs=150, lr=0.005):
+def sort_dataset_by_model_metric(trainset, testset, metric_func, reverse_sort, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
 
     if load_path is not None:
         with open(load_path, "rb") as f:
@@ -262,7 +276,7 @@ def sort_dataset_by_model_metric(trainset, testset, metric_func, reverse_sort, l
 
     # ----- Train model -----#
     net = make_standard_net(
-        num_classes=10,
+        num_classes=num_classes,
         input_dim=784,
         hidden_units=1200,
         hidden_layers=2,
