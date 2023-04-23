@@ -11,6 +11,33 @@ else:
     DEVICE = "cpu"
 
 
+def make_conv_net():
+
+    return nn.Sequential(
+        nn.Conv2d(in_channels=3,out_channels=8,stride=1,kernel_size=(3,3),padding=1),
+        nn.ReLu(),
+        nn.Conv2d(in_channels=8,out_channels=32,kernel_size=(3,3),padding=1,stride=1),
+        nn.ReLu(),
+        nn.MaxPool2d(kernel_size=(2,2),stride=2),
+        nn.Conv2d(in_channels=32,out_channels=64,kernel_size=(3,3),padding=1,stride=1),
+        nn.ReLu(),
+        nn.Dropout2d(p=0.5),
+        nn.Conv2d(in_channels=64,out_channels=128,kernel_size=(3,3),padding=1,stride=1),
+        nn.ReLu(),
+        nn.MaxPool2d(kernel_size=(2,2),stride=2),
+        nn.Conv2d(in_channels=128,out_channels=256,kernel_size=(3,3),stride=1),
+        nn.ReLu(),
+        nn.Dropout2d(p=0.5),
+        nn.Flatten(),
+        nn.Linear(in_features=6*6*256,out_features=256),
+        nn.ReLu(),
+        nn.Linear(in_features=256,out_features=128),
+        nn.ReLu(),
+        nn.Linear(in_features=128,out_features=64),
+        nn.ReLu(),
+        nn.Linear(in_features=64,out_features=10),
+    )
+
 def make_net(
     input_dim: int,
     num_classes: int,
@@ -94,7 +121,7 @@ def test_net(net, dataset):
     return total_loss, total_correct / total_examples
 
 
-def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False):
+def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False, dataset_name="mnist"):
     """
     Trains inputted net using provided trainset.
     """
@@ -108,7 +135,10 @@ def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False):
         trainset = preproc_data
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters(), lr)
+    if dataset_name == "mnist":
+        optimizer = torch.optim.Adam(net.parameters(), lr)
+    elif dataset_name == "cifar10":
+        optimizer = torch.optim.Adam(net.parameters(), lr, weight_decay=5e-4)
 
     losses = []
     epoch_losses = []
@@ -146,4 +176,8 @@ def train_net(epochs, net, trainset, lr=0.001, plot=False, preproc=False):
         plt.xlabel("Epoch")
         plt.show()
 
+    net.eval()
+
     return epoch_losses
+
+

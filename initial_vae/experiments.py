@@ -20,11 +20,12 @@ from data import (
     random_prune,
     ordered_prune,
     flatten_dataset,
-    load_class_spec_mnist
+    load_class_spec_mnist,
+    get_cifar10
 )
 
 from vae import compute_elbo, VAE, DEVICE, load_binary_mnist
-from network import make_standard_net, train_net, test_net, make_dropoout_net
+from network import make_standard_net, train_net, test_net, make_dropoout_net, make_conv_net
 
 
 TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
@@ -104,8 +105,8 @@ def load_mnist_vae_dict():
     return vaes
 
 
-def train_mlp_on_pruned_dataset(
-    train_dataset, test_loader, results, model_losses, run_key, lr, epochs, batch_size, num_classes=10
+def train_and_test_on_dataset(
+    train_dataset, test_loader, results, model_losses, run_key, lr, epochs, batch_size, num_classes=10, dataset_name="mnist"
 ):
 
     train_loader = torch.utils.data.DataLoader(
@@ -116,13 +117,17 @@ def train_mlp_on_pruned_dataset(
     )
 
     # ----- Train model with boundary -----#
-    net = make_standard_net(
-        num_classes=num_classes,
-        input_dim=784,
-        hidden_units=1200,
-        hidden_layers=2,
-    )
-    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
+    if dataset_name == "mnist":
+        net = make_standard_net(
+            num_classes=num_classes,
+            input_dim=784,
+            hidden_units=1200,
+            hidden_layers=2,
+        )
+    elif dataset_name == "cifar10":
+        net = make_conv_net()
+
+    epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr, dataset_name=dataset_name)
     _, acc = test_net(net, test_loader)
 
     results[run_key].append(acc)
@@ -132,27 +137,44 @@ def train_mlp_on_pruned_dataset(
 
 
 def test_boundary_learning(
-    props, repeats=3, epochs=100, batch_size=512, k=1000, lr=0.001, print_results=False, mnist_classes=None
+    props, 
+    repeats=3, 
+    epochs=100, 
+    batch_size=512, 
+    k=1000, 
+    lr=0.001, 
+    print_results=False, 
+    dataset_name="mnist",
+    classes=None,
 ):
 
     vae_dict = load_mnist_vae_dict()
     multi_class_vae = torch.load(MODEL_PATH)
     # Collect elbo values
 
+    if dataset_name == "mnist":
+        if classes is None:
+            trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
+        else:
+            trainset, testset = load_class_spec_mnist(TRAIN_PATH, TEST_PATH, classes=classes)
+    elif dataset_name == "cifar10":
+        if classes is None:
+            trainset, testset = get_cifar10()
+        else:
+            raise NotImplementedError("Not yet implemented class specific cifar10 testing")
 
-    if mnist_classes is None:
+
+    if classes is None:
         num_classes=10
-        trainset, testset = load_binary_mnist(1, TRAIN_PATH, TEST_PATH)
-        class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k, load_path=CLASS_ELBO_DATA_PATH)
-        elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k, load_path=ELBO_DATA_PATH)
-        nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset, load_path=NEIGHBORS_DATA_PATH)
-        gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset, load_path=GAUSSIAN_DATA_PATH)
-        entropy_data , _ = sort_dataset_by_entropy(trainset, testset, load_path=ENTROPY_DATA_PATH)
-        p_p_comp_data, _ = sort_dataset_by_p_p_comp(trainset, testset, load_path=P_P_COMP_DATA_PATH)
-        top_prob_diff_data, _ = sort_dataset_by_top_prob_diff(trainset, testset, load_path=TOP_PROB_DIFF_DATA_PATH)
+        #class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k, load_path=CLASS_ELBO_DATA_PATH)
+        #elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k, load_path=ELBO_DATA_PATH)
+        #nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset, load_path=NEIGHBORS_DATA_PATH)
+        #gaussian_data, _ = sort_dataset_by_fitted_gaussian(vae_dict, trainset, load_path=GAUSSIAN_DATA_PATH)
+        entropy_data , _ = sort_dataset_by_entropy(trainset, testset, load_path=ENTROPY_DATA_PATH, dataset_name=dataset_name)
+        p_p_comp_data, _ = sort_dataset_by_p_p_comp(trainset, testset, load_path=P_P_COMP_DATA_PATH, dataset_name=dataset_name)
+        top_prob_diff_data, _ = sort_dataset_by_top_prob_diff(trainset, testset, load_path=TOP_PROB_DIFF_DATA_PATH, dataset_name=dataset_name)
     else:
-        num_classes = len(mnist_classes)
-        trainset, testset = load_class_spec_mnist(TRAIN_PATH, TEST_PATH, classes=mnist_classes)
+        num_classes = len(classes)
         class_elbo_data, _ = sort_dataset_by_class_elbo(vae_dict, trainset, k)
         elbo_data, _ = sort_dataset_by_elbo(multi_class_vae, trainset, k)
         #nn_data, _ = sort_dataset_by_latent_neighbors(vae_dict, trainset)
@@ -173,7 +195,7 @@ def test_boundary_learning(
     for prop in props:
 
         train_data_dict = {}
-        train_data_dict["class_elbo_prune"] = flatten_dataset(ordered_prune(class_elbo_data, prop))
+        #train_data_dict["class_elbo_prune"] = flatten_dataset(ordered_prune(class_elbo_data, prop))
         #train_data_dict["class_elbo_prune_50_50"] = flatten_dataset(ordered_prune(class_elbo_data, prop, prop_random=0.5))
         #train_data_dict["elbo_prune"] = flatten_dataset(ordered_prune(elbo_data, prop))
         #train_data_dict["elbo_prune_50_50"] = flatten_dataset(ordered_prune(elbo_data, prop, prop_random=0.5))
@@ -190,7 +212,8 @@ def test_boundary_learning(
             print(f"Testing proportion {prop}, repeat {rep+1}/{repeats}")
             for key, train_dataset in train_data_dict.items():
 
-                train_mlp_on_pruned_dataset(
+                # WTF IS THIS!
+                train_and_test_on_dataset(
                     train_dataset,
                     test_loader,
                     results,
@@ -199,7 +222,8 @@ def test_boundary_learning(
                     lr,
                     epochs,
                     batch_size,
-                    num_classes=num_classes
+                    num_classes=num_classes,
+                    dataset_name=dataset_name
                 )
 
     if print_results:
@@ -418,14 +442,15 @@ if __name__ == "__main__":
     ##test_entropy_against_pruning_technique(epochs=150, k=1000)
 
     plotting_data, model_losses = test_boundary_learning(
-        props=[0.2, 0.1, 0.05, 0.01],
+        props=[1, 0.8, 0.6, 0.4, 0.2, 0.1],
         #props=[0.01],
         repeats=1,
         epochs=150,
         batch_size=512,
         k=1000,
         lr=0.001,
-        mnist_classes=(0,1)
+        dataset_name="cifar10"
+        #mnist_classes=(0,1)
     )
     #sort_datasets()
     """

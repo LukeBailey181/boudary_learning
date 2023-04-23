@@ -13,10 +13,59 @@ from vae import compute_elbo, DEVICE, load_binary_mnist
 from collections import defaultdict
 import numpy as np
 from scipy.stats import multivariate_normal
-from network import make_standard_net, train_net, test_net
+from network import make_standard_net, train_net, test_net, make_conv_net
+from typing import Tuple, List, Union
 
 TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
 TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
+DATASET_ROOT = "../data"
+
+def get_cifar10(num_workers=2, flatten=False) -> Tuple[List[Union[torch.Tensor, int]], List[Union[torch.Tensor, int]]]:
+    """
+    Returns 2 lists, one for trainset, one testset =
+    """
+
+    transform_comp = [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),  # to [-1, 1]
+        ] 
+    if flatten:
+        transform_comp.append(transforms.Lambda(lambda x: torch.flatten(x)))
+
+    transform = transforms.Compose(transform_comp)
+
+    train_set = datasets.CIFAR10(
+        root=DATASET_ROOT, train=True, download=True, transform=transform
+    )
+    test_set = datasets.CIFAR10(
+        root=DATASET_ROOT, train=False, download=True, transform=transform
+    )
+
+    train_loader = torch.utils.data.DataLoader(
+        train_set,
+        batch_size=1,
+        shuffle=True,
+        drop_last=True,
+        pin_memory=True,
+        num_workers=num_workers,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        test_set,
+        batch_size=1,
+        shuffle=False,
+        drop_last=True,
+        pin_memory=True,
+        num_workers=num_workers,
+    )
+
+    # preprocess dataset by iterating over loader and applying transforms
+    preproc_train_set, preproc_test_set = [], []
+    for loader, dataset in zip([train_loader, test_loader], [preproc_train_set, preproc_test_set]):
+        for X,y in loader:
+            dataset.append([X.squeeze(0), y.item()])
+
+    return preproc_train_set, preproc_test_set
+
 
 def get_mnist(batch_size):
 
@@ -245,43 +294,63 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_pat
 
     return output
 
-def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
-    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr, num_classes)
+def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
+    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr, num_classes, dataset_name)
 
-def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
-    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr, num_classes)
+def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
+    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr, num_classes, dataset_name)
 
-def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
-    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr, num_classes)
+def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
+    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr, num_classes, dataset_name)
 
-def sort_dataset_by_model_metric(trainset, testset, metric_func, reverse_sort, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10):
+def sort_dataset_by_model_metric(
+        trainset, 
+        testset, 
+        metric_func, 
+        reverse_sort, 
+        load_path=None, 
+        save_path=None, 
+        epochs=150, 
+        lr=0.005, 
+        num_classes=10,
+        dataset_name="mnist"
+    ):
+
+    assert(dataset_name in {"mnist", "cifar10"})
 
     if load_path is not None:
         with open(load_path, "rb") as f:
             return pickle.load(f)
 
+
+    if dataset_name == "mnist":
+        net = make_standard_net(
+            num_classes=num_classes,
+            input_dim=784,
+            hidden_units=1200,
+            hidden_layers=2,
+        )
+
+        dataset_transform = flatten_dataset
+    elif dataset_name == "cifar10":
+        net = make_conv_net()
+        dataset_transform = lambda x: x
+
     # Train model on dataset
     train_loader = torch.utils.data.DataLoader(
-        flatten_dataset(trainset),
+        dataset_transform(trainset),
         batch_size=512,
         shuffle=True,
         pin_memory=True,
     )
     test_loader = torch.utils.data.DataLoader(
-        flatten_dataset(testset),
+        dataset_transform(testset),
         batch_size=512,
         shuffle=True,
         pin_memory=True,
     )
 
     # ----- Train model -----#
-    net = make_standard_net(
-        num_classes=num_classes,
-        input_dim=784,
-        hidden_units=1200,
-        hidden_layers=2,
-    )
-    net.eval()
     epoch_losses = train_net(epochs, net, train_loader, preproc=True, lr=lr)
     _, acc = test_net(net, test_loader)
     print(f"MODEL ACCURACY: {acc}")

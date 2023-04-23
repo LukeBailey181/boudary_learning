@@ -133,7 +133,21 @@ class VAE(nn.Module):
             px_z = dist.Bernoulli(logits=self.decode(z), validate_args=False)
             return qz_x, px_z, z
         elif self.dataset_name == "cifar10":
-            # TODO IMPLEMENT THIS
+            #TODO CHANGE THIS
+            x = x.view(-1, 784)
+            qz_x = dist.Normal(*self.encode(x))
+            z = qz_x.rsample(torch.Size([k]))
+
+            """
+            z_projected = self.project(z).view(
+                -1, self.kernel_num,
+                self.feature_size,
+                self.feature_size,
+            )
+            """
+            x_reconstructed = self.decoder(z)
+            # What distribution to use for pz_x?
+
             pass
 
     # ---------------------- # 
