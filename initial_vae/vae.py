@@ -25,7 +25,6 @@ TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
 
 
 def load_binary_mnist(batch_size, train_path, test_path):
-
     with open(train_path, "rb") as f:
         trainset = pickle.load(f)
     with open(test_path, "rb") as f:
@@ -39,15 +38,15 @@ def load_binary_mnist(batch_size, train_path, test_path):
 
 class VAE(nn.Module):
     def __init__(
-            self, 
-            dataset_name="mnist", 
-            latent_dim=20,
-        ):
+        self,
+        dataset_name="mnist",
+        latent_dim=20,
+    ):
         """
         Args:
-            dataset_name: one of {mnist, cifar10} indicating the dataset 
-                that the VAE will be trained on. 
-            latent_dim: dimension of latent space. 
+            dataset_name: one of {mnist, cifar10} indicating the dataset
+                that the VAE will be trained on.
+            latent_dim: dimension of latent space.
         """
 
         super(VAE, self).__init__()
@@ -66,20 +65,20 @@ class VAE(nn.Module):
             self.fc5 = nn.Linear(400, 400)
             self.fc6 = nn.Linear(400, 784)
         elif dataset_name == "cifar10":
-            image_size = 32*32, 
-            channel_num = 3, 
-            kernel_num = 128,
+            image_size = (32 * 32,)
+            channel_num = (3,)
+            kernel_num = (128,)
 
             # encoder
             self.encoder = nn.Sequential(
-            self._conv(channel_num, kernel_num // 4),
-            self._conv(kernel_num // 4, kernel_num // 2),
-            self._conv(kernel_num // 2, kernel_num),
+                self._conv(channel_num, kernel_num // 4),
+                self._conv(kernel_num // 4, kernel_num // 2),
+                self._conv(kernel_num // 2, kernel_num),
             )
 
-             # encoded feature's size and volume
+            # encoded feature's size and volume
             self.feature_size = image_size // 8
-            self.feature_volume = kernel_num * (self.feature_size ** 2)
+            self.feature_volume = kernel_num * (self.feature_size**2)
 
             # q, end of encoder
             self.q_mean = self._linear(self.feature_volume, latent_dim, relu=False)
@@ -93,11 +92,13 @@ class VAE(nn.Module):
                 self._deconv(kernel_num, kernel_num // 2),
                 self._deconv(kernel_num // 2, kernel_num // 4),
                 self._deconv(kernel_num // 4, channel_num),
-                nn.Sigmoid()
+                nn.Sigmoid(),
             )
 
         else:
-            raise ValueError(f"dataset_name of {dataset_name} not one of (mnist, cifar10)")
+            raise ValueError(
+                f"dataset_name of {dataset_name} not one of (mnist, cifar10)"
+            )
 
     def encode(self, x):
         net = x
@@ -107,7 +108,6 @@ class VAE(nn.Module):
             net = F.relu(self.fc2(net))
             return self.fc31(net), self.fc32(net).exp()
         elif self.dataset_name == "cifar10":
-
             encoded = self.encoder(net)
             unrolled = encoded.view(-1, self.feature_volume)
             mean, logvar = self.q_mean(unrolled), self.q_logvar(unrolled)
@@ -125,7 +125,6 @@ class VAE(nn.Module):
             pass
 
     def forward(self, x, k=1):
-
         if self.dataset_name == "mnist":
             x = x.view(-1, 784)
             qz_x = dist.Normal(*self.encode(x))
@@ -133,7 +132,7 @@ class VAE(nn.Module):
             px_z = dist.Bernoulli(logits=self.decode(z), validate_args=False)
             return qz_x, px_z, z
         elif self.dataset_name == "cifar10":
-            #TODO CHANGE THIS
+            # TODO CHANGE THIS
             x = x.view(-1, 784)
             qz_x = dist.Normal(*self.encode(x))
             z = qz_x.rsample(torch.Size([k]))
@@ -150,16 +149,19 @@ class VAE(nn.Module):
 
             pass
 
-    # ---------------------- # 
+    # ---------------------- #
     # -----CIFAR LAYERS----- #
-    # ---------------------- # 
-    
+    # ---------------------- #
+
     def _conv(self, channel_size, kernel_num):
         """Conv layer for cifar10 encoder"""
         return nn.Sequential(
             nn.Conv2d(
-                channel_size, kernel_num,
-                kernel_size=4, stride=2, padding=1,
+                channel_size,
+                kernel_num,
+                kernel_size=4,
+                stride=2,
+                padding=1,
             ),
             nn.BatchNorm2d(kernel_num),
             nn.ReLU(),
@@ -169,18 +171,25 @@ class VAE(nn.Module):
         """Conv layer for cifar10 decoder"""
         return nn.Sequential(
             nn.ConvTranspose2d(
-                channel_num, kernel_num,
-                kernel_size=4, stride=2, padding=1,
+                channel_num,
+                kernel_num,
+                kernel_size=4,
+                stride=2,
+                padding=1,
             ),
             nn.BatchNorm2d(kernel_num),
             nn.ReLU(),
         )
 
     def _linear(self, in_size, out_size, relu=True):
-        return nn.Sequential(
-            nn.Linear(in_size, out_size),
-            nn.ReLU(),
-        ) if relu else nn.Linear(in_size, out_size)
+        return (
+            nn.Sequential(
+                nn.Linear(in_size, out_size),
+                nn.ReLU(),
+            )
+            if relu
+            else nn.Linear(in_size, out_size)
+        )
 
 
 def compute_elbo(x, qz_x, px_z, z):
@@ -218,7 +227,6 @@ def train(
     dynamic_bin=False,
     verbose=False,
 ):
-
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.train()
 
@@ -261,7 +269,6 @@ def test(epoch, model, test_loader, k, batch_size, verbose=False):
     model.eval()
     test_loss = 0
     with torch.no_grad():
-
         for i, (data, _) in enumerate(test_loader):
             data = data.to(DEVICE)
             qz_x, px_z, z = model(data, k=k)
@@ -294,7 +301,6 @@ def train_vae(
     k=1000,
     device=DEVICE,
 ):
-
     model = VAE()
     model.to(device)
 
@@ -328,7 +334,6 @@ def train_vae_on_mnist(
     log_interval=100,
     save_path="./models/vae_mnist.pkl",
 ):
-
     train_loader, test_loader = load_binary_mnist(batch_size, train_path, test_path)
 
     train_vae(
@@ -349,7 +354,6 @@ def train_class_spec_vaes(
     log_interval=100,
     save_path="./models/vae_mnist.pkl",
 ):
-
     train_loader, test_loader = load_binary_mnist(batch_size, train_path, test_path)
 
     # Break train loader into class specific datasets
@@ -386,6 +390,5 @@ def train_class_spec_vaes(
 
 
 if __name__ == "__main__":
-
     # train_vae_on_mnist()
     train_class_spec_vaes(epochs=30)

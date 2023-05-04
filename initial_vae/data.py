@@ -20,15 +20,18 @@ TRAIN_PATH = "../data/binary_MNIST/bin_mnist_train.pkl"
 TEST_PATH = "../data/binary_MNIST/bin_mnist_test.pkl"
 DATASET_ROOT = "../data"
 
-def get_cifar10(num_workers=2, flatten=False) -> Tuple[List[Union[torch.Tensor, int]], List[Union[torch.Tensor, int]]]:
+
+def get_cifar10(
+    num_workers=2, flatten=False
+) -> Tuple[List[Union[torch.Tensor, int]], List[Union[torch.Tensor, int]]]:
     """
     Returns 2 lists, one for trainset, one testset =
     """
 
     transform_comp = [
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),  # to [-1, 1]
-        ] 
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),  # to [-1, 1]
+    ]
     if flatten:
         transform_comp.append(transforms.Lambda(lambda x: torch.flatten(x)))
 
@@ -60,15 +63,16 @@ def get_cifar10(num_workers=2, flatten=False) -> Tuple[List[Union[torch.Tensor, 
 
     # preprocess dataset by iterating over loader and applying transforms
     preproc_train_set, preproc_test_set = [], []
-    for loader, dataset in zip([train_loader, test_loader], [preproc_train_set, preproc_test_set]):
-        for X,y in loader:
+    for loader, dataset in zip(
+        [train_loader, test_loader], [preproc_train_set, preproc_test_set]
+    ):
+        for X, y in loader:
             dataset.append([X.squeeze(0), y.item()])
 
     return preproc_train_set, preproc_test_set
 
 
 def get_mnist(batch_size):
-
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
             "../data", train=True, download=True, transform=transforms.ToTensor()
@@ -89,7 +93,6 @@ def get_mnist(batch_size):
 
 
 def _binarize_dataloader(dataloader):
-
     binary_dataset = []
     for X, y in dataloader:
         sample = torch.rand(X.size())
@@ -102,7 +105,6 @@ def _binarize_dataloader(dataloader):
 
 # TODO make this directory saving more robust using path objects
 def gen_binary_mnist(train_path, test_path):
-
     train_loader, test_loader = get_mnist(1)
 
     trainset = _binarize_dataloader(train_loader)
@@ -113,22 +115,24 @@ def gen_binary_mnist(train_path, test_path):
     with open(test_path, "wb") as f:
         pickle.dump(testset, f)
 
-def load_class_spec_mnist(train_path, test_path, classes=(0,1)):
 
+def load_class_spec_mnist(train_path, test_path, classes=(0, 1)):
     trainset, testset = load_binary_mnist(1, train_path, test_path)
 
     class_spec_train, class_spec_test = [], []
     classes = set(classes)
-    for dataset, new_dataset in zip([trainset, testset], [class_spec_train, class_spec_test]):
-        for X,y in dataset:
+    for dataset, new_dataset in zip(
+        [trainset, testset], [class_spec_train, class_spec_test]
+    ):
+        for X, y in dataset:
             if y.item() in classes:
-                new_dataset.append([X,y])
-    
+                new_dataset.append([X, y])
+
     return class_spec_train, class_spec_test
+
 
 @torch.no_grad()
 def sort_dataset_by_elbo(vae, dataset, k=100, load_path=None, save_path=None):
-
     if load_path is not None:
         with open(load_path, "rb") as f:
             return pickle.load(f)
@@ -156,8 +160,9 @@ def sort_dataset_by_elbo(vae, dataset, k=100, load_path=None, save_path=None):
 
 
 @torch.no_grad()
-def sort_dataset_by_class_elbo(vae_dict, dataset, k=100, load_path=None, save_path=None):
-
+def sort_dataset_by_class_elbo(
+    vae_dict, dataset, k=100, load_path=None, save_path=None
+):
     if load_path is not None:
         with open(load_path, "rb") as f:
             return pickle.load(f)
@@ -186,9 +191,9 @@ def sort_dataset_by_class_elbo(vae_dict, dataset, k=100, load_path=None, save_pa
 
     return output
 
+
 @torch.no_grad()
 def sort_dataset_by_fitted_gaussian(vae_dict, dataset, load_path=None, save_path=None):
-
     if load_path is not None:
         with open(load_path, "rb") as f:
             return pickle.load(f)
@@ -243,7 +248,6 @@ def sort_dataset_by_fitted_gaussian(vae_dict, dataset, load_path=None, save_path
     return output
 
 
-
 @torch.no_grad()
 def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_path=None):
     """Returns dataset sorted by distance of points to centroid
@@ -287,41 +291,105 @@ def sort_dataset_by_latent_neighbors(vae_dict, dataset, load_path=None, save_pat
     # Sort with largest distances first
     data_distances.sort(key=lambda x: x[2], reverse=True)
 
-    output = [[i[0].to("cpu"), i[1]] for i in data_distances], [i[-1] for i in data_distances]
+    output = [[i[0].to("cpu"), i[1]] for i in data_distances], [
+        i[-1] for i in data_distances
+    ]
     if save_path is not None:
         with open(save_path, "wb") as f:
             pickle.dump(output, f)
 
     return output
 
-def sort_dataset_by_entropy(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
-    return sort_dataset_by_model_metric(trainset, testset, calc_entropy, True, load_path, save_path, epochs, lr, num_classes, dataset_name)
 
-def sort_dataset_by_p_p_comp(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
-    return sort_dataset_by_model_metric(trainset, testset, calc_p_p_complement_sum, True, load_path, save_path, epochs, lr, num_classes, dataset_name)
+def sort_dataset_by_entropy(
+    trainset,
+    testset,
+    load_path=None,
+    save_path=None,
+    epochs=150,
+    lr=0.005,
+    num_classes=10,
+    dataset_name="mnist",
+):
+    return sort_dataset_by_model_metric(
+        trainset,
+        testset,
+        calc_entropy,
+        True,
+        load_path,
+        save_path,
+        epochs,
+        lr,
+        num_classes,
+        dataset_name,
+    )
 
-def sort_dataset_by_top_prob_diff(trainset, testset, load_path=None, save_path=None, epochs=150, lr=0.005, num_classes=10, dataset_name="mnist"):
-    return sort_dataset_by_model_metric(trainset, testset, calc_top_prob_diff, False, load_path, save_path, epochs, lr, num_classes, dataset_name)
+
+def sort_dataset_by_p_p_comp(
+    trainset,
+    testset,
+    load_path=None,
+    save_path=None,
+    epochs=150,
+    lr=0.005,
+    num_classes=10,
+    dataset_name="mnist",
+):
+    return sort_dataset_by_model_metric(
+        trainset,
+        testset,
+        calc_p_p_complement_sum,
+        True,
+        load_path,
+        save_path,
+        epochs,
+        lr,
+        num_classes,
+        dataset_name,
+    )
+
+
+def sort_dataset_by_top_prob_diff(
+    trainset,
+    testset,
+    load_path=None,
+    save_path=None,
+    epochs=150,
+    lr=0.005,
+    num_classes=10,
+    dataset_name="mnist",
+):
+    return sort_dataset_by_model_metric(
+        trainset,
+        testset,
+        calc_top_prob_diff,
+        False,
+        load_path,
+        save_path,
+        epochs,
+        lr,
+        num_classes,
+        dataset_name,
+    )
+
 
 def sort_dataset_by_model_metric(
-        trainset, 
-        testset, 
-        metric_func, 
-        reverse_sort, 
-        load_path=None, 
-        save_path=None, 
-        epochs=150, 
-        lr=0.005, 
-        num_classes=10,
-        dataset_name="mnist"
-    ):
-
-    assert(dataset_name in {"mnist", "cifar10"})
+    trainset,
+    testset,
+    metric_func,
+    reverse_sort,
+    load_path=None,
+    save_path=None,
+    epochs=150,
+    lr=0.005,
+    num_classes=10,
+    dataset_name="mnist",
+):
+    assert dataset_name in {"mnist", "cifar10"}
 
     if load_path is not None:
         with open(load_path, "rb") as f:
             return pickle.load(f)
-
 
     if dataset_name == "mnist":
         net = make_standard_net(
@@ -330,21 +398,22 @@ def sort_dataset_by_model_metric(
             hidden_units=1200,
             hidden_layers=2,
         )
+        dataset_transform = torch.flatten
 
         dataset_transform = flatten_dataset
     elif dataset_name == "cifar10":
         net = make_conv_net()
         dataset_transform = lambda x: x
+    else:
+        raise ValueError(f"Dataset {dataset_name} not one of (mnist, cifar10)")
 
     # Train model on dataset
     train_loader = torch.utils.data.DataLoader(
-        dataset_transform(trainset),
         batch_size=512,
         shuffle=True,
         pin_memory=True,
     )
     test_loader = torch.utils.data.DataLoader(
-        dataset_transform(testset),
         batch_size=512,
         shuffle=True,
         pin_memory=True,
@@ -358,12 +427,11 @@ def sort_dataset_by_model_metric(
     data_metric = []
     with torch.no_grad():
         for X, y in tqdm(trainset):
-            X_flat = X.flatten()
-            X_flat = X_flat.to(DEVICE)
-            pred = net(X_flat)
+            X_t = dataset_transform(X).to(DEVICE)
+            pred = net(X_t)
             logits = F.softmax(pred, dim=0).to("cpu")
             metric = metric_func(logits)
-            data_metric.append([X,y, metric])
+            data_metric.append([X, y, metric])
 
     data_metric.sort(key=lambda x: x[2], reverse=reverse_sort)
 
@@ -374,8 +442,8 @@ def sort_dataset_by_model_metric(
 
     return output
 
-def random_prune(dataset, prop, num_classes=10):
 
+def random_prune(dataset, prop, num_classes=10):
     class_points = int((len(dataset) * prop) / num_classes)
     train_shuffle = random.sample(dataset, len(dataset))
 
@@ -391,24 +459,25 @@ def random_prune(dataset, prop, num_classes=10):
     return pruned_data
 
 
-def ordered_prune(sorted_data, prop, num_classes=10, reverse=False, shuffle=True, prop_random=0):
-
+def ordered_prune(
+    sorted_data, prop, num_classes=10, reverse=False, shuffle=True, prop_random=0
+):
     data_dict = defaultdict(list)
     for idx, (X, y) in enumerate(sorted_data):
         data_dict[y.item()].append([X, y, idx])
 
-    class_points = int((len(sorted_data) * prop  * (1 - prop_random)) / num_classes)
+    class_points = int((len(sorted_data) * prop * (1 - prop_random)) / num_classes)
     random_points = int((len(sorted_data) * prop * prop_random) / num_classes)
 
     pruned_data = []
     for class_ in range(num_classes):
         if reverse:
             pruned_data += data_dict[class_][-1 * class_points :]
-            #pruned_data += random.sample(data_dict[class_][: -1 * class_points], random_points)
+            # pruned_data += random.sample(data_dict[class_][: -1 * class_points], random_points)
             pruned_data += random.sample(data_dict[class_], random_points)
         else:
             pruned_data += data_dict[class_][:class_points]
-            #pruned_data += random.sample(data_dict[class_][class_points:], random_points)
+            # pruned_data += random.sample(data_dict[class_][class_points:], random_points)
             pruned_data += random.sample(data_dict[class_], random_points)
 
     # Sort by index to preserver original ordering
@@ -434,28 +503,30 @@ def flatten_dataset(dataset):
 def calc_entropy(logits):
     """
     Keyword aguments:
-        logits - M dim tensor corresponding to logits for single input 
+        logits - M dim tensor corresponding to logits for single input
     Returns:
         Scalar entropy value
     """
-    return Categorical(probs = logits).entropy().item()
+    return Categorical(probs=logits).entropy().item()
+
 
 def calc_p_p_complement_sum(logits):
     """
     Keyword aguments:
-        logits - M dim tensor corresponding to logits for single input 
+        logits - M dim tensor corresponding to logits for single input
     Returns:
         Scalar value corresponding to sum_c p_c (1-p_c)
     """
 
     return torch.sum(logits * (1 - logits)).item()
 
+
 def calc_top_prob_diff(logits):
     """
     Keyword aguments:
-        logits - M dim tensor corresponding to logits for single input 
+        logits - M dim tensor corresponding to logits for single input
     Returns:
-        Scalar value corresponding to difference between two highest values 
+        Scalar value corresponding to difference between two highest values
         in logits
     """
     sorted_p, _ = torch.sort(logits, descending=True)
@@ -466,12 +537,12 @@ def calc_top_prob_diff(logits):
         print(p_2)
         print(logits)
         print(sorted_p)
-        raise(ValueError)
+        raise (ValueError)
 
     return (p_1 - p_2).item()
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     data_dir = "../data/binary_MNIST/"
     train_path = data_dir + "bin_mnist_train.pkl"
     test_path = data_dir + "bin_mnist_test.pkl"
